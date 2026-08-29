@@ -17,10 +17,10 @@
     anchors: { tl: [number, number]; tr: [number, number]; bl: [number, number]; br: [number, number] } | null;
   } = $props();
 
-  let refCanvas: HTMLCanvasElement;
-  let alignedCanvas: HTMLCanvasElement;
-  let diffCanvas: HTMLCanvasElement;
-  let overlayCanvas: HTMLCanvasElement;
+  let refCanvas: HTMLCanvasElement = $state()!;
+  let alignedCanvas: HTMLCanvasElement = $state()!;
+  let diffCanvas: HTMLCanvasElement = $state()!;
+  let overlayCanvas: HTMLCanvasElement = $state()!;
 
   // Draw images to canvases after mount/update
   $effect(() => {

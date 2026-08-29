@@ -36,6 +36,8 @@
 <div
   class="drop-zone"
   class:dragging
+  role="region"
+  aria-label="Drop zone for {label}"
   ondrop={handleDrop}
   ondragover={handleDragOver}
   ondragleave={handleDragLeave}
