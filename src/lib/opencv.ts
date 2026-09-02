@@ -1,99 +1,261 @@
 /**
- * OpenCV.js wrapper for sketch alignment and comparison.
+ * Self-hosted OpenCV.js client for sketch alignment and comparison.
  *
- * OpenCV.js is loaded at runtime from a CDN. All heavy processing is
- * offloaded to a Web Worker so the UI stays responsive.
+ * The official browser build is served from `public/vendor` instead of a CDN.
+ * Keep this module's public API promise-based so OpenCV work can move behind a
+ * worker or service boundary later without changing Svelte call sites.
  */
 
 export type CvState = 'idle' | 'loading' | 'ready' | 'error';
-
-let cvInstance: any = null;
-
-/** Load OpenCV.js from CDN. Returns a promise that resolves when cv is ready. */
-export function loadOpenCV(): Promise<any> {
-  if (cvInstance) return Promise.resolve(cvInstance);
-  if (typeof window === 'undefined') return Promise.reject('SSR');
-
-  return new Promise((resolve, reject) => {
-    if ((window as any).cv && (window as any).cv.Mat) {
-      cvInstance = (window as any).cv;
-      resolve(cvInstance);
-      return;
-    }
-
-    // Set the callback before loading the script
-    (window as any).cvReady = () => {
-      cvInstance = (window as any).cv;
-      if (cvInstance?.Mat) {
-        resolve(cvInstance);
-      } else {
-        // OpenCV.js fires onRuntimeInitialized internally; wait for it
-        const orig = cvInstance?.onRuntimeInitialized;
-        cvInstance.onRuntimeInitialized = () => {
-          if (orig) orig();
-          resolve(cvInstance);
-        };
-      }
-    };
-
-    const script = document.createElement('script');
-    script.setAttribute('async', '');
-    script.setAttribute('src', 'https://docs.opencv.org/4.11.0/opencv.js');
-    script.onload = () => {
-      // opencv.js may need time to initialize WASM after download
-      const check = () => {
-        const cv = (window as any).cv;
-        if (cv && typeof cv.Mat !== 'undefined') {
-          cvInstance = cv;
-          resolve(cvInstance);
-        } else {
-          setTimeout(check, 100);
-        }
-      };
-      check();
-    };
-    script.onerror = () => reject(new Error('Failed to load OpenCV.js'));
-    document.head.appendChild(script);
-  });
-}
 
 export interface AlignResult {
   aligned: ImageData;
   homography: number[];
   inlierCount: number;
+  method: 'manual' | 'auto' | 'none';
+}
+
+export interface AnchorSet {
+  tl: [number, number];
+  tr: [number, number];
+  bl: [number, number];
+  br: [number, number];
+}
+
+export interface AlignmentPoint {
+  x: number;
+  y: number;
+}
+
+export interface ManualAnchorPair {
+  id: number;
+  ref: AlignmentPoint;
+  src: AlignmentPoint;
+}
+
+type CvRuntime = any;
+
+const OPENCV_SCRIPT_ID = 'opencv-js-runtime';
+const OPENCV_SCRIPT_URL = '/vendor/opencv-4.9.0.js';
+
+let cvInstance: CvRuntime | null = null;
+let loadPromise: Promise<void> | null = null;
+const statusListeners = new Set<(message: string) => void>();
+
+declare global {
+  interface Window {
+    cv?: CvRuntime;
+    Module?: {
+      onRuntimeInitialized?: () => void;
+    };
+  }
+}
+
+/** Subscribe to progress/status messages. Returns an unsubscribe fn. */
+export function onStatus(listener: (message: string) => void): () => void {
+  statusListeners.add(listener);
+  return () => {
+    statusListeners.delete(listener);
+  };
+}
+
+function emitStatus(message: string) {
+  for (const listener of statusListeners) listener(message);
+}
+
+/** Load the self-hosted OpenCV.js runtime. Resolves when `cv.Mat` is ready. */
+export function loadOpenCV(): Promise<void> {
+  if (cvInstance?.Mat || window.cv?.Mat) {
+    cvInstance = cvInstance ?? window.cv ?? null;
+    return Promise.resolve();
+  }
+  if (loadPromise) return loadPromise;
+
+  loadPromise = new Promise<void>((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      reject(new Error('OpenCV.js can only load in a browser'));
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      reject(new Error('OpenCV.js failed to initialize within 30s'));
+    }, 30_000);
+
+    const finish = () => {
+      window.clearTimeout(timeout);
+      const runtime = window.cv;
+      if (runtime?.Mat) {
+        cvInstance = runtime;
+        emitStatus('OpenCV ready.');
+        resolve();
+      } else {
+        reject(new Error('OpenCV.js initialized without cv.Mat'));
+      }
+    };
+
+    emitStatus('Loading self-hosted OpenCV.js runtime...');
+    const existing = document.getElementById(OPENCV_SCRIPT_ID) as HTMLScriptElement | null;
+    window.Module = {
+      ...(window.Module || {}),
+      onRuntimeInitialized: finish,
+    };
+
+    if (existing) {
+      if (window.cv?.Mat) finish();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = OPENCV_SCRIPT_ID;
+    script.async = true;
+    script.src = OPENCV_SCRIPT_URL;
+    script.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(new Error(`Failed to load ${OPENCV_SCRIPT_URL}`));
+    };
+    document.head.appendChild(script);
+  }).catch((error) => {
+    loadPromise = null;
+    throw error;
+  });
+
+  return loadPromise;
+}
+
+function getCv(): CvRuntime {
+  const cv = cvInstance ?? window.cv;
+  if (!cv?.Mat) throw new Error('OpenCV.js is not ready');
+  return cv;
+}
+
+function frameToMat(cv: CvRuntime, image: ImageData): CvRuntime {
+  return cv.matFromImageData(image);
+}
+
+function matToImageData(cv: CvRuntime, mat: CvRuntime): ImageData {
+  let out = mat;
+  let created = false;
+  if (out.channels() !== 4) {
+    out = new cv.Mat();
+    cv.cvtColor(mat, out, cv.COLOR_GRAY2RGBA);
+    created = true;
+  }
+
+  const image = new ImageData(out.cols, out.rows);
+  image.data.set(out.data);
+  if (created) out.delete();
+  return image;
+}
+
+function cleanup(items: CvRuntime[]) {
+  for (const item of items) {
+    if (item && typeof item.delete === 'function') item.delete();
+  }
 }
 
 /**
- * Align `source` image to `reference` image using ORB feature matching +
- * RANSAC homography. Returns the warped source ImageData.
+ * Align `source` to `reference`. Manual anchor pairs take priority when there
+ * are at least 4 complete pairs; otherwise ORB feature matching is used.
  */
-export function alignImages(cv: any, refCanvas: HTMLCanvasElement, srcCanvas: HTMLCanvasElement): AlignResult {
-  const refMat = cv.imread(refCanvas);
-  const srcMat = cv.imread(srcCanvas);
+export async function alignImages(
+  ref: ImageData,
+  src: ImageData,
+  manualAnchors: ManualAnchorPair[] = []
+): Promise<AlignResult> {
+  await loadOpenCV();
+  const cv = getCv();
 
-  // Convert to grayscale
+  if (manualAnchors.length >= 4) {
+    const manualResult = alignWithManualAnchors(cv, ref, src, manualAnchors);
+    if (manualResult) return manualResult;
+  }
+
+  return alignWithOrb(cv, ref, src);
+}
+
+/** Align only from user-provided point pairs; never fall back to auto alignment. */
+export async function alignImagesManually(
+  ref: ImageData,
+  src: ImageData,
+  manualAnchors: ManualAnchorPair[]
+): Promise<AlignResult> {
+  if (manualAnchors.length < 4) {
+    throw new Error('At least four complete anchor pairs are required');
+  }
+
+  await loadOpenCV();
+  const result = alignWithManualAnchors(getCv(), ref, src, manualAnchors);
+  if (!result) throw new Error('These anchor points could not produce a stable alignment');
+  return result;
+}
+
+function alignWithManualAnchors(
+  cv: CvRuntime,
+  ref: ImageData,
+  src: ImageData,
+  manualAnchors: ManualAnchorPair[]
+): AlignResult | null {
+  const refMat = frameToMat(cv, ref);
+  const srcMat = frameToMat(cv, src);
+  const srcPoints = manualAnchors.flatMap((anchor) => [anchor.src.x, anchor.src.y]);
+  const refPoints = manualAnchors.flatMap((anchor) => [anchor.ref.x, anchor.ref.y]);
+  const srcPts = cv.matFromArray(manualAnchors.length, 1, cv.CV_32FC2, srcPoints);
+  const refPts = cv.matFromArray(manualAnchors.length, 1, cv.CV_32FC2, refPoints);
+  const mask = new cv.Mat();
+  const H = cv.findHomography(srcPts, refPts, cv.RANSAC, 4.0, mask);
+
+  if (H.empty()) {
+    cleanup([refMat, srcMat, srcPts, refPts, mask, H]);
+    return null;
+  }
+
+  let inlierCount = 0;
+  for (let i = 0; i < mask.rows; i++) {
+    if (mask.data[i]) inlierCount++;
+  }
+
+  const warped = new cv.Mat();
+  const dsize = new cv.Size(refMat.cols, refMat.rows);
+  cv.warpPerspective(srcMat, warped, H, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+  const homography: number[] = [];
+  for (let i = 0; i < H.rows; i++) {
+    for (let j = 0; j < H.cols; j++) {
+      homography.push(H.data64F[i * H.cols + j]);
+    }
+  }
+
+  const aligned = matToImageData(cv, warped);
+  cleanup([refMat, srcMat, srcPts, refPts, mask, H, warped]);
+
+  return { aligned, homography, inlierCount, method: 'manual' };
+}
+
+function alignWithOrb(cv: CvRuntime, ref: ImageData, src: ImageData): AlignResult {
+  const refMat = frameToMat(cv, ref);
+  const srcMat = frameToMat(cv, src);
+
   const refGray = new cv.Mat();
   const srcGray = new cv.Mat();
   cv.cvtColor(refMat, refGray, cv.COLOR_RGBA2GRAY);
   cv.cvtColor(srcMat, srcGray, cv.COLOR_RGBA2GRAY);
 
-  // Detect ORB keypoints & descriptors
   const orb = new cv.ORB(2000);
   const refKp = new cv.KeyPointVector();
   const srcKp = new cv.KeyPointVector();
   const refDesc = new cv.Mat();
   const srcDesc = new cv.Mat();
-  orb.detectAndCompute(refGray, new cv.Mat(), refKp, refDesc);
-  orb.detectAndCompute(srcGray, new cv.Mat(), srcKp, srcDesc);
+  const refMask = new cv.Mat();
+  const srcMask = new cv.Mat();
+  orb.detectAndCompute(refGray, refMask, refKp, refDesc);
+  orb.detectAndCompute(srcGray, srcMask, srcKp, srcDesc);
 
-  // Match using BFMatcher + Hamming
   const bf = new cv.BFMatcher(cv.NORM_HAMMING);
   const matches = new cv.DMatchVectorVector();
   bf.knnMatch(srcDesc, refDesc, matches, 2);
 
-  // Lowe's ratio test
-  const goodSrcPts: number[][] = [];
-  const goodRefPts: number[][] = [];
+  const goodSrcPts: number[] = [];
+  const goodRefPts: number[] = [];
   for (let i = 0; i < matches.size(); i++) {
     const m = matches.get(i);
     if (m.size() >= 2) {
@@ -102,82 +264,63 @@ export function alignImages(cv: any, refCanvas: HTMLCanvasElement, srcCanvas: HT
       if (m0.distance < 0.75 * m1.distance) {
         const srcPt = srcKp.get(m0.queryIdx).pt;
         const refPt = refKp.get(m0.trainIdx).pt;
-        goodSrcPts.push([srcPt.x, srcPt.y]);
-        goodRefPts.push([refPt.x, refPt.y]);
+        goodSrcPts.push(srcPt.x, srcPt.y);
+        goodRefPts.push(refPt.x, refPt.y);
       }
     }
   }
 
-  let inlierCount = goodSrcPts.length;
-  let homographyData: number[] = [];
+  const homography: number[] = [];
 
-  if (goodSrcPts.length >= 4) {
-    const srcPts = cv.matFromArray(goodSrcPts.length, 1, cv.CV_32FC2, goodSrcPts.flat());
-    const refPts = cv.matFromArray(goodRefPts.length, 1, cv.CV_32FC2, goodRefPts.flat());
-
+  if (goodSrcPts.length >= 8) {
+    const srcPts = cv.matFromArray(goodSrcPts.length / 2, 1, cv.CV_32FC2, goodSrcPts);
+    const refPts = cv.matFromArray(goodRefPts.length / 2, 1, cv.CV_32FC2, goodRefPts);
     const mask = new cv.Mat();
     const H = cv.findHomography(srcPts, refPts, cv.RANSAC, 5.0, mask);
 
-    // Count inliers from mask
-    inlierCount = 0;
-    for (let i = 0; i < mask.rows; i++) {
-      if (mask.data[i]) inlierCount++;
-    }
-
-    // Warp source to align with reference
-    const warped = new cv.Mat();
-    const dsize = new cv.Size(refMat.cols, refMat.rows);
-    cv.warpPerspective(srcMat, warped, H, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
-
-    // Read result into ImageData
-    const outCanvas = document.createElement('canvas');
-    outCanvas.width = warped.cols;
-    outCanvas.height = warped.rows;
-    cv.imshow(outCanvas, warped);
-
-    const ctx = outCanvas.getContext('2d')!;
-    const imageData = ctx.getImageData(0, 0, outCanvas.width, outCanvas.height);
-
-    // Store homography
-    for (let i = 0; i < H.rows; i++) {
-      for (let j = 0; j < H.cols; j++) {
-        homographyData.push(H.data64F[i * H.cols + j]);
+    if (!H.empty()) {
+      let inlierCount = 0;
+      for (let i = 0; i < mask.rows; i++) {
+        if (mask.data[i]) inlierCount++;
       }
+
+      const warped = new cv.Mat();
+      const dsize = new cv.Size(refMat.cols, refMat.rows);
+      cv.warpPerspective(srcMat, warped, H, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+      const aligned = matToImageData(cv, warped);
+      for (let i = 0; i < H.rows; i++) {
+        for (let j = 0; j < H.cols; j++) {
+          homography.push(H.data64F[i * H.cols + j]);
+        }
+      }
+
+      cleanup([
+        refMat, srcMat, refGray, srcGray, refMask, srcMask, refKp, srcKp,
+        refDesc, srcDesc, orb, bf, matches, srcPts, refPts, mask, H, warped
+      ]);
+      return { aligned, homography, inlierCount, method: 'auto' };
     }
 
-    // Cleanup
-    srcPts.delete(); refPts.delete(); mask.delete(); H.delete(); warped.delete();
-
-    // Cleanup intermediates
-    refMat.delete(); srcMat.delete(); refGray.delete(); srcGray.delete();
-    refKp.delete(); srcKp.delete(); refDesc.delete(); srcDesc.delete();
-    orb.delete(); bf.delete(); matches.delete();
-
-    return { aligned: imageData, homography: homographyData, inlierCount };
+    cleanup([srcPts, refPts, mask, H]);
   }
 
-  // Fallback: not enough matches — return source as-is
-  const outCanvas = document.createElement('canvas');
-  outCanvas.width = srcMat.cols;
-  outCanvas.height = srcMat.rows;
-  cv.imshow(outCanvas, srcMat);
-  const ctx = outCanvas.getContext('2d')!;
-  const imageData = ctx.getImageData(0, 0, outCanvas.width, outCanvas.height);
+  const aligned = new ImageData(src.width, src.height);
+  aligned.data.set(src.data);
+  cleanup([
+    refMat, srcMat, refGray, srcGray, refMask, srcMask, refKp, srcKp,
+    refDesc, srcDesc, orb, bf, matches
+  ]);
 
-  refMat.delete(); srcMat.delete(); refGray.delete(); srcGray.delete();
-  refKp.delete(); srcKp.delete(); refDesc.delete(); srcDesc.delete();
-  orb.delete(); bf.delete(); matches.delete();
-
-  return { aligned: imageData, homography: [], inlierCount: 0 };
+  return { aligned, homography: [], inlierCount: 0, method: 'none' };
 }
 
-/**
- * Compute a pixel-difference image between two aligned images.
- * Returns an ImageData with differences highlighted.
- */
-export function computeDifference(cv: any, refCanvas: HTMLCanvasElement, alignedCanvas: HTMLCanvasElement): ImageData {
-  const refMat = cv.imread(refCanvas);
-  const alMat = cv.imread(alignedCanvas);
+/** Compute the pixel-difference image between two aligned images. */
+export async function computeDifference(ref: ImageData, aligned: ImageData): Promise<ImageData> {
+  await loadOpenCV();
+  const cv = getCv();
+  const refMat = frameToMat(cv, ref);
+  const alMat = frameToMat(cv, aligned);
 
   const refGray = new cv.Mat();
   const alGray = new cv.Mat();
@@ -187,42 +330,29 @@ export function computeDifference(cv: any, refCanvas: HTMLCanvasElement, aligned
   const diff = new cv.Mat();
   cv.absdiff(refGray, alGray, diff);
 
-  // Threshold to highlight meaningful differences
   const thresh = new cv.Mat();
   cv.threshold(diff, thresh, 30, 255, cv.THRESH_BINARY);
 
-  // Convert to RGBA for display
   const rgba = new cv.Mat();
   cv.cvtColor(thresh, rgba, cv.COLOR_GRAY2RGBA);
 
-  const outCanvas = document.createElement('canvas');
-  outCanvas.width = rgba.cols;
-  outCanvas.height = rgba.rows;
-  cv.imshow(outCanvas, rgba);
+  const out = matToImageData(cv, rgba);
+  cleanup([refMat, alMat, refGray, alGray, diff, thresh, rgba]);
 
-  const ctx = outCanvas.getContext('2d')!;
-  const imageData = ctx.getImageData(0, 0, outCanvas.width, outCanvas.height);
-
-  refMat.delete(); alMat.delete(); refGray.delete(); alGray.delete();
-  diff.delete(); thresh.delete(); rgba.delete();
-
-  return imageData;
+  return out;
 }
 
-/**
- * Detect grid intersection points as anchor candidates at the 4 extremes.
- * Uses adaptive thresholding + contour analysis to find grid lines,
- * then picks intersection points near corners.
- */
-export function detectGridAnchors(cv: any, canvas: HTMLCanvasElement): { tl: [number, number]; tr: [number, number]; bl: [number, number]; br: [number, number] } | null {
-  const mat = cv.imread(canvas);
+/** Detect grid intersection anchors at the 4 extremes of the image. */
+export async function detectGridAnchors(image: ImageData): Promise<AnchorSet | null> {
+  await loadOpenCV();
+  const cv = getCv();
+  const mat = frameToMat(cv, image);
   const gray = new cv.Mat();
   cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
 
   const bw = new cv.Mat();
   cv.adaptiveThreshold(gray, bw, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 15, 5);
 
-  // Morphological operations to find grid lines
   const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(30, 1));
   const hLines = new cv.Mat();
   cv.morphologyEx(bw, hLines, cv.MORPH_OPEN, kernel);
@@ -231,11 +361,9 @@ export function detectGridAnchors(cv: any, canvas: HTMLCanvasElement): { tl: [nu
   const vLines = new cv.Mat();
   cv.morphologyEx(bw, vLines, cv.MORPH_OPEN, vKernel);
 
-  // Find intersections by AND of h and v
   const intersection = new cv.Mat();
   cv.bitwise_and(hLines, vLines, intersection);
 
-  // Find contours at intersection points
   const contours = new cv.MatVector();
   const hierarchy = new cv.Mat();
   cv.findContours(intersection, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
@@ -247,45 +375,31 @@ export function detectGridAnchors(cv: any, canvas: HTMLCanvasElement): { tl: [nu
     if (M.m00 > 0) {
       points.push([M.m10 / M.m00, M.m01 / M.m00]);
     }
+    cnt.delete();
   }
 
-  mat.delete(); gray.delete(); bw.delete();
-  kernel.delete(); hLines.delete(); vKernel.delete(); vLines.delete();
-  intersection.delete(); contours.delete(); hierarchy.delete();
+  cleanup([mat, gray, bw, kernel, hLines, vKernel, vLines, intersection, contours, hierarchy]);
 
   if (points.length < 4) return null;
 
-  const w = canvas.width;
-  const h = canvas.height;
-
-  // Sort into quadrants to find 4 extremes
-  const midX = w / 2;
-  const midY = h / 2;
+  const midX = image.width / 2;
+  const midY = image.height / 2;
 
   const topLeft = points
     .filter(([x, y]) => x < midX && y < midY)
-    .sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]))[0];
+    .sort((a, b) => a[0] + a[1] - (b[0] + b[1]))[0];
   const topRight = points
     .filter(([x, y]) => x >= midX && y < midY)
-    .sort((a, b) => -(a[0] - a[1]) + (b[0] - b[1]))[0] ?? points
-    .filter(([x, y]) => x >= midX && y < midY)
-    .sort((a, b) => (b[0] - a[1]) - (a[0] - a[1]))[0];
+    .sort((a, b) => b[0] - a[1] - (a[0] - b[1]))[0];
   const bottomLeft = points
     .filter(([x, y]) => x < midX && y >= midY)
-    .sort((a, b) => -(a[0] - a[1]) + (b[0] - b[1]))[0] ?? points
-    .filter(([x, y]) => x < midX && y >= midY)
-    .sort((a, b) => (a[0] - a[1]) - (b[0] - b[1]))[0];
+    .sort((a, b) => a[0] - b[1] - (b[0] - a[1]))[0];
   const bottomRight = points
     .filter(([x, y]) => x >= midX && y >= midY)
-    .sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]))
+    .sort((a, b) => a[0] + a[1] - (b[0] + b[1]))
     .reverse()[0];
 
   if (!topLeft || !topRight || !bottomLeft || !bottomRight) return null;
 
-  return {
-    tl: topLeft,
-    tr: topRight,
-    bl: bottomLeft,
-    br: bottomRight
-  };
+  return { tl: topLeft, tr: topRight, bl: bottomLeft, br: bottomRight };
 }

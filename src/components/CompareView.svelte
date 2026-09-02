@@ -3,24 +3,26 @@
 
   let {
     refImg,
+    srcImg,
     alignResult,
     diffImageData,
     viewMode,
-    overlayOpacity,
-    anchors
+    overlayOpacity
   }: {
     refImg: HTMLImageElement;
-    alignResult: AlignResult;
+    srcImg: HTMLImageElement;
+    alignResult: AlignResult | null;
     diffImageData: ImageData | null;
     viewMode: string;
     overlayOpacity: number;
-    anchors: { tl: [number, number]; tr: [number, number]; bl: [number, number]; br: [number, number] } | null;
   } = $props();
 
   let refCanvas: HTMLCanvasElement = $state()!;
   let alignedCanvas: HTMLCanvasElement = $state()!;
   let diffCanvas: HTMLCanvasElement = $state()!;
   let overlayCanvas: HTMLCanvasElement = $state()!;
+  let cachedAlignResult: AlignResult | null = null;
+  let cachedAlignedCanvas: HTMLCanvasElement | null = null;
 
   // Draw images to canvases after mount/update
   $effect(() => {
@@ -30,32 +32,21 @@
       const ctx = refCanvas.getContext('2d')!;
       ctx.drawImage(refImg, 0, 0);
 
-      // Draw anchor markers
-      if (anchors) {
-        ctx.fillStyle = '#6366f1';
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        for (const [key, pt] of Object.entries(anchors)) {
-          ctx.beginPath();
-          ctx.arc(pt[0], pt[1], 8, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 11px sans-serif';
-          ctx.fillText(key.toUpperCase(), pt[0] + 12, pt[1] + 4);
-          ctx.fillStyle = '#6366f1';
-        }
-      }
     }
   });
 
   $effect(() => {
-    if (alignResult && alignedCanvas) {
-      alignedCanvas.width = alignResult.aligned.width;
-      alignedCanvas.height = alignResult.aligned.height;
+    if (alignedCanvas) {
       const ctx = alignedCanvas.getContext('2d')!;
-      ctx.putImageData(alignResult.aligned, 0, 0);
+      if (alignResult) {
+        alignedCanvas.width = alignResult.aligned.width;
+        alignedCanvas.height = alignResult.aligned.height;
+        ctx.putImageData(alignResult.aligned, 0, 0);
+      } else if (srcImg) {
+        alignedCanvas.width = srcImg.naturalWidth;
+        alignedCanvas.height = srcImg.naturalHeight;
+        ctx.drawImage(srcImg, 0, 0);
+      }
     }
   });
 
@@ -72,21 +63,26 @@
     if (refImg && alignResult && overlayCanvas) {
       const w = refImg.naturalWidth;
       const h = refImg.naturalHeight;
-      overlayCanvas.width = w;
-      overlayCanvas.height = h;
+      if (overlayCanvas.width !== w || overlayCanvas.height !== h) {
+        overlayCanvas.width = w;
+        overlayCanvas.height = h;
+      }
       const ctx = overlayCanvas.getContext('2d')!;
 
       // Draw reference
+      ctx.clearRect(0, 0, w, h);
       ctx.drawImage(refImg, 0, 0);
 
       // Draw aligned with opacity
+      if (cachedAlignResult !== alignResult || !cachedAlignedCanvas) {
+        cachedAlignResult = alignResult;
+        cachedAlignedCanvas = document.createElement('canvas');
+        cachedAlignedCanvas.width = alignResult.aligned.width;
+        cachedAlignedCanvas.height = alignResult.aligned.height;
+        cachedAlignedCanvas.getContext('2d')!.putImageData(alignResult.aligned, 0, 0);
+      }
       ctx.globalAlpha = overlayOpacity;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = alignResult.aligned.width;
-      tempCanvas.height = alignResult.aligned.height;
-      const tempCtx = tempCanvas.getContext('2d')!;
-      tempCtx.putImageData(alignResult.aligned, 0, 0);
-      ctx.drawImage(tempCanvas, 0, 0);
+      ctx.drawImage(cachedAlignedCanvas, 0, 0);
       ctx.globalAlpha = 1.0;
     }
   });
@@ -100,7 +96,7 @@
         <canvas bind:this={refCanvas}></canvas>
       </div>
       <div class="canvas-card">
-        <span class="canvas-label">Aligned Source</span>
+        <span class="canvas-label">{alignResult ? 'Aligned Source' : 'Source'}</span>
         <canvas bind:this={alignedCanvas}></canvas>
       </div>
     </div>
@@ -127,12 +123,12 @@
 
 <style>
   .compare-section {
-    margin-top: 2rem;
+    margin-top: 0;
   }
 
   .view {
     display: grid;
-    gap: 1rem;
+    gap: 0.9rem;
   }
 
   .side-by-side,
@@ -144,7 +140,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
-    background: var(--surface);
+    background: #ffffff;
   }
 
   .canvas-card.full-width {
@@ -153,19 +149,35 @@
 
   .canvas-label {
     display: block;
-    padding: 0.5rem 0.75rem;
+    padding: 0.65rem 0.75rem;
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     color: var(--muted);
     border-bottom: 1px solid var(--border);
-    background: var(--surface);
+    background: #fafafa;
   }
 
   canvas {
     width: 100%;
+    height: min(72vh, 820px);
     display: block;
-    background: #000;
+    background:
+      linear-gradient(45deg, #eef0f3 25%, transparent 25%),
+      linear-gradient(-45deg, #eef0f3 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #eef0f3 75%),
+      linear-gradient(-45deg, transparent 75%, #eef0f3 75%);
+    background-color: #ffffff;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    background-size: 20px 20px;
+    object-fit: contain;
+  }
+
+  @media (max-width: 820px) {
+    .side-by-side,
+    .diff {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

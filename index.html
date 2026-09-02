@@ -6,15 +6,18 @@
     <title>Compare Sketch</title>
     <style>
       :root {
-        --bg: #0f1117;
-        --surface: #1a1d27;
-        --border: #2a2d3a;
-        --text: #e4e4e7;
-        --muted: #71717a;
-        --accent: #6366f1;
-        --accent-hover: #818cf8;
-        --danger: #ef4444;
-        --success: #22c55e;
+        --bg: #f4f6f8;
+        --surface: #ffffff;
+        --border: #d9dee7;
+        --border-strong: #aeb7c5;
+        --control-bg: #eef2f6;
+        --text: #1f2933;
+        --muted: #637083;
+        --accent: #246bfe;
+        --accent-hover: #1d56d8;
+        --accent-soft: rgba(36, 107, 254, 0.16);
+        --danger: #c83232;
+        --success: #138a45;
       }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
@@ -22,6 +25,16 @@
         background: var(--bg);
         color: var(--text);
         min-height: 100vh;
+      }
+      button,
+      input {
+        font: inherit;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      label:focus-within {
+        outline: 3px solid var(--accent-soft);
+        outline-offset: 2px;
       }
     </style>
   </head>
