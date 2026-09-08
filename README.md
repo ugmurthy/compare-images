@@ -14,6 +14,7 @@ A web application for aligning and comparing two similar pencil/charcoal sketch 
   - Side-by-side: reference vs aligned source
   - Overlay: blend aligned source on top of reference with adjustable opacity
   - Difference: denoised binary change map with adjustable intensity and minimum-region thresholds
+- **Compare Parts**: After alignment, drag a rectangle on the reference in Side by side or Difference view, then click **Compare parts**. The dedicated page shows that region from the reference and aligned source, with icon buttons for stacked or side-by-side layouts. Back preserves your selection; changing the alignment clears it. Keyboard selection supports arrow keys, Shift for 10-pixel steps, Enter to mark each corner, and Escape to clear.
 
 ## Tech Stack
 

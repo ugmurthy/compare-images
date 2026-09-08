@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import {
     alignImages,
     alignImagesManually,
@@ -12,6 +12,8 @@
   import type { ManualAnchor, Point } from './lib/manualAnchors';
   import AnchorEditor from './components/AnchorEditor.svelte';
   import CompareView from './components/CompareView.svelte';
+  import PartsView from './components/PartsView.svelte';
+  import type { Region } from './lib/region';
   import ImageDrop from './components/ImageDrop.svelte';
   import ModeSwitch from './components/ModeSwitch.svelte';
   import type { ComparisonMode } from './components/ModeSwitch.svelte';
@@ -22,11 +24,11 @@
   let srcUrl = $state('');
   let refImg: HTMLImageElement | null = $state(null);
   let srcImg: HTMLImageElement | null = $state(null);
-  let cvState: CvState = $state('idle');
-  let comparisonMode: ComparisonMode = $state('visual');
+  let cvState = $state<CvState>('idle');
+  let comparisonMode = $state<ComparisonMode>('visual');
   let processingMode: 'manual' | 'auto' | null = $state(null);
-  let manualResult: AlignResult | null = $state(null);
-  let autoResult: AlignResult | null = $state(null);
+  let manualResult = $state<AlignResult | null>(null);
+  let autoResult = $state<AlignResult | null>(null);
   let manualDiff: ImageData | null = $state(null);
   let autoDiff: ImageData | null = $state(null);
   let manualEditing = $state(true);
@@ -35,6 +37,8 @@
   let anchorListExpanded = $state(false);
   let nextManualAnchorId = $state(1);
   let viewMode = $state('side-by-side');
+  let selectedRegion: Region | null = $state(null);
+  let showingParts = $state(false);
   let overlayOpacity = $state(0.5);
   let overlayPlaying = $state(false);
   let differenceThreshold = $state(30);
@@ -69,6 +73,27 @@
   $effect(() => {
     if (cvState === 'idle') loadCv();
   });
+
+  $effect(() => {
+    // A different alignment/image pair invalidates its pixel selection.
+    activeResult;
+    refImg;
+    selectedRegion = null;
+    showingParts = false;
+  });
+
+  function compareParts() {
+    if (!selectedRegion || !activeResult) return;
+    stopOverlayAnimation();
+    showingParts = true;
+    window.scrollTo(0, 0);
+  }
+
+  async function closeParts() {
+    showingParts = false;
+    await tick();
+    document.querySelector<HTMLButtonElement>('[aria-label="Compare parts"]')?.focus();
+  }
 
   async function loadCv() {
     if (cvState === 'loading' || cvState === 'ready') return;
@@ -393,6 +418,8 @@
         <button class="text-btn" onclick={clearAll} disabled={!refFile && !srcFile}>Reset</button>
       </div>
     </section>
+  {:else if showingParts && selectedRegion && activeResult}
+    <PartsView reference={refImg} aligned={activeResult.aligned} region={selectedRegion} onback={closeParts} />
   {:else}
     <section class="image-strip" aria-label="Selected images">
       <div class="image-summary">
@@ -552,6 +579,8 @@
             onrotatesource={comparisonMode === 'visual' ? rotateSource : undefined}
             {sourceRotating}
             {differenceProcessing}
+            bind:region={selectedRegion}
+            oncompareparts={compareParts}
           />
         {/if}
       </div>

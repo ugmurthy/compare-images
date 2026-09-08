@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { AlignResult } from '../lib/opencv';
+  import type { Region } from '../lib/region';
+  import RegionSelector from './RegionSelector.svelte';
 
   let {
     refImg,
@@ -10,7 +12,9 @@
     overlayOpacity,
     onrotatesource,
     sourceRotating = false,
-    differenceProcessing = false
+    differenceProcessing = false,
+    region = $bindable(null),
+    oncompareparts
   }: {
     refImg: HTMLImageElement;
     srcImg: HTMLImageElement;
@@ -21,6 +25,8 @@
     onrotatesource?: () => void;
     sourceRotating?: boolean;
     differenceProcessing?: boolean;
+    region?: Region | null;
+    oncompareparts?: () => void;
   } = $props();
 
   let refCanvas: HTMLCanvasElement = $state()!;
@@ -95,11 +101,26 @@
 </script>
 
 <section class="compare-section">
+  {#if alignResult && oncompareparts}
+    <div class="parts-tools">
+      <div>
+        <strong>Compare a detail</strong>
+        <p>{viewMode === 'overlay' ? 'Switch to Side by side or Difference to select a rectangle on the reference.' : 'Drag a rectangle on the reference. Keyboard: arrows to move, Enter for each corner, Escape to clear.'}</p>
+        <span role="status">{region ? `Selected: ${region.width} × ${region.height} px at (${region.x}, ${region.y})` : 'No rectangle selected'}</span>
+      </div>
+      <button class="rotate-btn" onclick={() => region = null} disabled={!region}>Clear selection</button>
+      <button class="parts-btn" aria-label="Compare parts" onclick={oncompareparts} disabled={!region}>Compare parts</button>
+    </div>
+  {/if}
   {#if viewMode === 'side-by-side'}
     <div class="view side-by-side">
       <div class="canvas-card">
         <span class="canvas-label">Reference</span>
-        <canvas bind:this={refCanvas}></canvas>
+        {#if alignResult && oncompareparts}
+          <RegionSelector image={refImg} bind:region />
+        {:else}
+          <canvas bind:this={refCanvas}></canvas>
+        {/if}
       </div>
       <div class="canvas-card">
         <div class="canvas-label with-action">
@@ -125,7 +146,11 @@
     <div class="view diff">
       <div class="canvas-card">
         <span class="canvas-label">Reference</span>
-        <canvas bind:this={refCanvas}></canvas>
+        {#if alignResult && oncompareparts}
+          <RegionSelector image={refImg} bind:region />
+        {:else}
+          <canvas bind:this={refCanvas}></canvas>
+        {/if}
       </div>
       <div class="canvas-card" aria-busy={differenceProcessing}>
         <span class="canvas-label">Differences</span>
@@ -142,6 +167,14 @@
 </section>
 
 <style>
+  .parts-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 0.85rem; font-size: 0.78rem; }
+  .parts-tools > div { flex: 1 1 260px; }
+  .parts-tools p { color: var(--muted); margin: 0.25rem 0; font-size: 0.73rem; }
+  .parts-tools span { color: var(--accent); font-size: 0.73rem; }
+  .parts-tools button { min-height: 44px; }
+  .parts-btn { background: var(--accent); border: 1px solid var(--accent); border-radius: 6px; color: #fff; cursor: pointer; font-size: 0.78rem; font-weight: 800; padding: 0.5rem 0.8rem; }
+  .parts-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
   .compare-section {
     margin-top: 0;
   }
