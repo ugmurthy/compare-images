@@ -5,6 +5,7 @@ A web application for aligning and comparing two similar pencil/charcoal sketch 
 ## Features
 
 - **Image Upload**: Drag-and-drop or browse for two sketch images (reference and source)
+- **Source Rotation**: Rotate the source clockwise in 90° steps before aligning
 - **Unified Comparison Workspace**: Switch between original visual comparison, manual anchor alignment, and automatic alignment without leaving the images
 - **Auto-Alignment**: Uses OpenCV.js ORB feature matching + RANSAC homography to align images
 - **Manual Anchors**: Add color-paired anchor points, drag or arrow-key nudge them, undo points, and use an adjustable linked or per-image visual grid
@@ -12,7 +13,7 @@ A web application for aligning and comparing two similar pencil/charcoal sketch 
 - **Comparison Views**:
   - Side-by-side: reference vs aligned source
   - Overlay: blend aligned source on top of reference with adjustable opacity
-  - Difference: thresholded pixel difference highlighting changes
+  - Difference: denoised binary change map with adjustable intensity and minimum-region thresholds
 
 ## Tech Stack
 
@@ -60,6 +61,6 @@ build or backend service without changing the Svelte components.
 ## MVP Limitations
 
 - OpenCV.js is self-hosted but still large (~10MB, cached after first load)
-- Processing is synchronous on the main thread (may block UI for large images)
+- OpenCV alignment remains on the main thread with resolution-bounded feature detection; full-resolution difference filtering runs in a dedicated Web Worker
 - Grid detection works best with clear, high-contrast grid lines
 - No full history/redo or save functionality yet

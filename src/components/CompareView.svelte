@@ -7,7 +7,10 @@
     alignResult,
     diffImageData,
     viewMode,
-    overlayOpacity
+    overlayOpacity,
+    onrotatesource,
+    sourceRotating = false,
+    differenceProcessing = false
   }: {
     refImg: HTMLImageElement;
     srcImg: HTMLImageElement;
@@ -15,6 +18,9 @@
     diffImageData: ImageData | null;
     viewMode: string;
     overlayOpacity: number;
+    onrotatesource?: () => void;
+    sourceRotating?: boolean;
+    differenceProcessing?: boolean;
   } = $props();
 
   let refCanvas: HTMLCanvasElement = $state()!;
@@ -96,7 +102,15 @@
         <canvas bind:this={refCanvas}></canvas>
       </div>
       <div class="canvas-card">
-        <span class="canvas-label">{alignResult ? 'Aligned Source' : 'Source'}</span>
+        <div class="canvas-label with-action">
+          <span>{alignResult ? 'Aligned Source' : 'Source'}</span>
+          {#if onrotatesource}
+            <button class="rotate-btn" onclick={onrotatesource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise">
+              <span aria-hidden="true">↻</span>
+              {sourceRotating ? 'Rotating…' : 'Rotate 90°'}
+            </button>
+          {/if}
+        </div>
         <canvas bind:this={alignedCanvas}></canvas>
       </div>
     </div>
@@ -113,9 +127,15 @@
         <span class="canvas-label">Reference</span>
         <canvas bind:this={refCanvas}></canvas>
       </div>
-      <div class="canvas-card">
+      <div class="canvas-card" aria-busy={differenceProcessing}>
         <span class="canvas-label">Differences</span>
         <canvas bind:this={diffCanvas}></canvas>
+        {#if differenceProcessing}
+          <div class="processing-overlay" role="status" aria-live="polite">
+            <span class="canvas-spinner" aria-hidden="true"></span>
+            <span>Computing differences…</span>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}
@@ -140,6 +160,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
+    position: relative;
     background: #ffffff;
   }
 
@@ -158,6 +179,58 @@
     border-bottom: 1px solid var(--border);
     background: #fafafa;
   }
+
+  .canvas-label.with-action {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .rotate-btn {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--accent);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 0.7rem;
+    font-weight: 800;
+    gap: 0.3rem;
+    letter-spacing: 0;
+    padding: 0.3rem 0.5rem;
+    text-transform: none;
+  }
+
+  .rotate-btn:hover { border-color: var(--accent); }
+  .rotate-btn:disabled { cursor: wait; opacity: 0.55; }
+  .rotate-btn span { font-size: 1rem; line-height: 0.7; }
+
+  .processing-overlay {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    font-size: 0.78rem;
+    font-weight: 800;
+    gap: 0.65rem;
+    inset: 2.45rem 0 0;
+    justify-content: center;
+    position: absolute;
+    z-index: 2;
+  }
+
+  .canvas-spinner {
+    animation: spin 0.75s linear infinite;
+    border: 3px solid #dce3eb;
+    border-radius: 50%;
+    border-top-color: var(--accent);
+    height: 1.65rem;
+    width: 1.65rem;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   canvas {
     width: 100%;

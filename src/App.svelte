@@ -3,12 +3,11 @@
   import {
     alignImages,
     alignImagesManually,
-    computeDifference,
-    detectGridAnchors,
     loadOpenCV,
     onStatus
   } from './lib/opencv';
   import type { AlignResult, CvState } from './lib/opencv';
+  import { computeDifference } from './lib/difference';
   import { completeAnchors } from './lib/manualAnchors';
   import type { ManualAnchor, Point } from './lib/manualAnchors';
   import AnchorEditor from './components/AnchorEditor.svelte';
@@ -38,9 +37,14 @@
   let viewMode = $state('side-by-side');
   let overlayOpacity = $state(0.5);
   let overlayPlaying = $state(false);
+  let differenceThreshold = $state(30);
+  let minimumDifferenceArea = $state(20);
+  let differenceProcessing = $state(false);
+  let sourceRotating = $state(false);
   let statusMsg = $state('');
   let errorMsg = $state('');
   let overlayAnimationFrame: number | null = null;
+  let differenceRequestId = 0;
 
   const OVERLAY_ANIMATION_DURATION = 1600;
 
@@ -114,8 +118,52 @@
     if (file?.type.startsWith('image/')) loadSelectedImage(file, side);
   }
 
+  async function rotateSource() {
+    if (!srcImg || sourceRotating) return;
+    sourceRotating = true;
+    errorMsg = '';
+    statusMsg = 'Rotating source image…';
+    await waitForPaint();
+
+    let rotatedUrl = '';
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = srcImg.naturalHeight;
+      canvas.height = srcImg.naturalWidth;
+      const context = canvas.getContext('2d')!;
+      context.translate(canvas.width, 0);
+      context.rotate(Math.PI / 2);
+      context.drawImage(srcImg, 0, 0);
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Could not encode the rotated image')), 'image/png');
+      });
+      rotatedUrl = URL.createObjectURL(blob);
+      const rotatedImage = new Image();
+      await new Promise<void>((resolve, reject) => {
+        rotatedImage.onload = () => resolve();
+        rotatedImage.onerror = () => reject(new Error('Could not load the rotated image'));
+        rotatedImage.src = rotatedUrl;
+      });
+
+      if (srcUrl) URL.revokeObjectURL(srcUrl);
+      srcUrl = rotatedUrl;
+      srcImg = rotatedImage;
+      resetComparisons();
+      resetManualAnchors();
+      statusMsg = 'Source rotated 90° clockwise. Ready to compare.';
+    } catch (error) {
+      if (rotatedUrl) URL.revokeObjectURL(rotatedUrl);
+      errorMsg = `Could not rotate source: ${(error as Error).message}`;
+    } finally {
+      sourceRotating = false;
+    }
+  }
+
   function resetComparisons() {
     stopOverlayAnimation();
+    differenceRequestId++;
+    differenceProcessing = false;
     manualResult = null;
     autoResult = null;
     manualDiff = null;
@@ -142,6 +190,8 @@
     comparisonMode = 'visual';
     viewMode = 'side-by-side';
     overlayOpacity = 0.5;
+    differenceThreshold = 30;
+    minimumDifferenceArea = 20;
     errorMsg = '';
     statusMsg = cvState === 'ready' ? 'Ready to compare.' : statusMsg;
     resetComparisons();
@@ -158,6 +208,7 @@
   function selectViewMode(mode: string) {
     if (mode !== 'overlay') stopOverlayAnimation();
     viewMode = mode;
+    if (mode === 'diff' && !activeDiff && activeResult) void refreshDifference();
   }
 
   function startOverlayAnimation() {
@@ -179,6 +230,37 @@
     if (overlayAnimationFrame !== null) cancelAnimationFrame(overlayAnimationFrame);
     overlayAnimationFrame = null;
     overlayPlaying = false;
+  }
+
+  async function refreshDifference() {
+    const result = activeResult;
+    const reference = refImg;
+    const mode = comparisonMode;
+    if (!result || !reference || (mode !== 'manual' && mode !== 'auto')) return;
+
+    const requestId = ++differenceRequestId;
+    differenceProcessing = true;
+    errorMsg = '';
+    try {
+      await waitForPaint();
+      const diff = await computeDifference(
+        imageDataFromImg(reference),
+        result.aligned,
+        differenceThreshold,
+        minimumDifferenceArea
+      );
+      if (requestId !== differenceRequestId || activeResult !== result) return;
+      if (mode === 'manual') manualDiff = diff;
+      else autoDiff = diff;
+    } catch (error) {
+      if (requestId === differenceRequestId) errorMsg = `Could not update differences: ${(error as Error).message}`;
+    } finally {
+      if (requestId === differenceRequestId) differenceProcessing = false;
+    }
+  }
+
+  function waitForPaint(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
   }
 
   function noteManualAnchorChange() {
@@ -240,6 +322,7 @@
     processingMode = method;
     errorMsg = '';
     statusMsg = method === 'manual' ? 'Applying anchor alignment…' : 'Detecting matching features…';
+    await waitForPaint();
 
     try {
       const refData = imageDataFromImg(refImg);
@@ -249,23 +332,20 @@
       if (method === 'manual') {
         result = await alignImagesManually(refData, srcData, completeManualAnchors);
       } else {
-        const grid = await detectGridAnchors(refData).catch(() => null);
         result = await alignImages(refData, srcData);
-        statusMsg = grid ? 'Reference grid detected. Computing comparison…' : 'Feature alignment complete. Computing comparison…';
       }
 
-      const diff = result.method === 'none' ? null : await computeDifference(refData, result.aligned);
       if (method === 'manual') {
         manualResult = result;
-        manualDiff = diff;
+        manualDiff = null;
         manualEditing = false;
         statusMsg = `Manual alignment complete · ${result.inlierCount} anchor inliers.`;
       } else {
         autoResult = result.method === 'auto' ? result : null;
-        autoDiff = diff;
+        autoDiff = null;
         statusMsg = result.method === 'auto'
           ? `Auto alignment complete · ${result.inlierCount} feature inliers.`
-          : 'Automatic alignment could not find enough matching features. Showing the original source.';
+          : 'Automatic alignment could not find a reliable transformation. Try Manual anchors for rotated, cropped, or photo-to-drawing comparisons.';
       }
       viewMode = 'side-by-side';
     } catch (error) {
@@ -379,6 +459,43 @@
                   {overlayPlaying ? 'Stop' : 'Play'}
                 </button>
               </div>
+            {:else if viewMode === 'diff'}
+              <div class="difference-tools" aria-label="Difference filtering controls">
+                <label class="difference-control">
+                  <span>Threshold</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    bind:value={differenceThreshold}
+                    onchange={refreshDifference}
+                    aria-label="Minimum brightness difference"
+                    disabled={differenceProcessing}
+                  />
+                  <output>{differenceThreshold}</output>
+                </label>
+                <label class="difference-control">
+                  <span>Min area</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="200"
+                    step="5"
+                    bind:value={minimumDifferenceArea}
+                    onchange={refreshDifference}
+                    aria-label="Minimum changed region area"
+                    disabled={differenceProcessing}
+                  />
+                  <output>{minimumDifferenceArea}px²</output>
+                </label>
+                {#if differenceProcessing}
+                  <span class="updating-label" role="status">
+                    <span class="spinner" aria-hidden="true"></span>
+                    Updating…
+                  </span>
+                {/if}
+              </div>
             {/if}
           {/if}
 
@@ -395,7 +512,13 @@
               <button class="secondary-btn" onclick={() => manualEditing = true}>Edit anchors</button>
             {/if}
           {:else if comparisonMode === 'auto'}
-            <button class="primary-btn" onclick={() => processImages('auto')} disabled={cvState !== 'ready' || processingMode !== null}>
+            <button
+              class="primary-btn"
+              onclick={() => processImages('auto')}
+              disabled={cvState !== 'ready' || processingMode !== null}
+              aria-busy={processingMode === 'auto'}
+            >
+              {#if processingMode === 'auto'}<span class="spinner light" aria-hidden="true"></span>{/if}
               {processingMode === 'auto' ? 'Aligning…' : autoResult ? 'Run again' : 'Auto align'}
             </button>
           {/if}
@@ -426,6 +549,9 @@
             diffImageData={activeDiff}
             viewMode={comparisonMode === 'visual' || !activeResult ? 'side-by-side' : viewMode}
             {overlayOpacity}
+            onrotatesource={comparisonMode === 'visual' ? rotateSource : undefined}
+            {sourceRotating}
+            {differenceProcessing}
           />
         {/if}
       </div>
@@ -563,6 +689,7 @@
     padding: 0.5rem 0.8rem;
   }
   .primary-btn { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
+  .primary-btn { align-items: center; display: inline-flex; gap: 0.45rem; justify-content: center; }
   .secondary-btn { background: #fff; border: 1px solid var(--border); color: var(--text); }
   .primary-btn:disabled { cursor: not-allowed; opacity: 0.5; }
 
@@ -590,6 +717,23 @@
   .play-btn:hover { background: var(--control-bg); border-color: var(--accent); }
   .play-btn.playing { background: #fff3f3; border-color: #fecaca; color: var(--danger); }
   .play-btn span { font-size: 0.62rem; line-height: 1; }
+  .difference-tools { align-items: center; display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  .difference-control { align-items: center; color: var(--muted); display: flex; font-size: 0.72rem; font-weight: 750; gap: 0.35rem; }
+  .difference-control input { accent-color: var(--accent); width: 82px; }
+  .difference-control output { color: var(--text); font-variant-numeric: tabular-nums; min-width: 2.7rem; }
+  .updating-label { align-items: center; color: var(--muted); display: inline-flex; font-size: 0.68rem; font-weight: 700; gap: 0.35rem; }
+  .spinner {
+    animation: spin 0.75s linear infinite;
+    border: 2px solid #d7dee7;
+    border-radius: 50%;
+    border-top-color: var(--accent);
+    display: inline-block;
+    flex: 0 0 auto;
+    height: 0.9rem;
+    width: 0.9rem;
+  }
+  .spinner.light { border-color: rgba(255, 255, 255, 0.4); border-top-color: #fff; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .workspace-body { padding: 0.85rem; }
   .status-bar { align-items: center; border-top: 1px solid var(--border); color: var(--muted); display: flex; font-size: 0.76rem; gap: 0.5rem; padding: 0.65rem 0.9rem; }
@@ -608,6 +752,9 @@
     .opacity-tools { justify-content: space-between; width: 100%; }
     .opacity-control { flex: 1; }
     .opacity-control input { flex: 1; width: auto; }
+    .difference-tools { width: 100%; }
+    .difference-control { flex: 1 1 45%; }
+    .difference-control input { flex: 1; width: auto; }
   }
 
   @media (max-width: 540px) {

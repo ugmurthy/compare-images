@@ -153,6 +153,64 @@ function cleanup(items: CvRuntime[]) {
   }
 }
 
+const MAX_FEATURE_DIMENSION = 1400;
+const MIN_AUTO_INLIERS = 12;
+
+function featureImage(cv: CvRuntime, gray: CvRuntime) {
+  const largestDimension = Math.max(gray.cols, gray.rows);
+  if (largestDimension <= MAX_FEATURE_DIMENSION) {
+    return { mat: gray, scaleX: 1, scaleY: 1, resized: false };
+  }
+
+  const scale = MAX_FEATURE_DIMENSION / largestDimension;
+  const width = Math.max(1, Math.round(gray.cols * scale));
+  const height = Math.max(1, Math.round(gray.rows * scale));
+  const mat = new cv.Mat();
+  cv.resize(gray, mat, new cv.Size(width, height), 0, 0, cv.INTER_AREA);
+  return {
+    mat,
+    scaleX: width / gray.cols,
+    scaleY: height / gray.rows,
+    resized: true
+  };
+}
+
+function plausibleHomography(
+  homography: number[],
+  sourceWidth: number,
+  sourceHeight: number,
+  referenceWidth: number,
+  referenceHeight: number
+) {
+  const corners = [[0, 0], [sourceWidth, 0], [sourceWidth, sourceHeight], [0, sourceHeight]];
+  const projected = corners.map(([x, y]) => {
+    const denominator = homography[6] * x + homography[7] * y + homography[8];
+    return [
+      (homography[0] * x + homography[1] * y + homography[2]) / denominator,
+      (homography[3] * x + homography[4] * y + homography[5]) / denominator
+    ];
+  });
+  if (projected.some(([x, y]) => !Number.isFinite(x) || !Number.isFinite(y))) return false;
+
+  const xs = projected.map(([x]) => x);
+  const ys = projected.map(([, y]) => y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const width = maxX - minX;
+  const height = maxY - minY;
+
+  return width >= referenceWidth * 0.1
+    && height >= referenceHeight * 0.1
+    && width <= referenceWidth * 4
+    && height <= referenceHeight * 4
+    && maxX > 0
+    && minX < referenceWidth
+    && maxY > 0
+    && minY < referenceHeight;
+}
+
 /**
  * Align `source` to `reference`. Manual anchor pairs take priority when there
  * are at least 4 complete pairs; otherwise ORB feature matching is used.
@@ -239,6 +297,8 @@ function alignWithOrb(cv: CvRuntime, ref: ImageData, src: ImageData): AlignResul
   const srcGray = new cv.Mat();
   cv.cvtColor(refMat, refGray, cv.COLOR_RGBA2GRAY);
   cv.cvtColor(srcMat, srcGray, cv.COLOR_RGBA2GRAY);
+  const refFeature = featureImage(cv, refGray);
+  const srcFeature = featureImage(cv, srcGray);
 
   const orb = new cv.ORB(2000);
   const refKp = new cv.KeyPointVector();
@@ -247,8 +307,8 @@ function alignWithOrb(cv: CvRuntime, ref: ImageData, src: ImageData): AlignResul
   const srcDesc = new cv.Mat();
   const refMask = new cv.Mat();
   const srcMask = new cv.Mat();
-  orb.detectAndCompute(refGray, refMask, refKp, refDesc);
-  orb.detectAndCompute(srcGray, srcMask, srcKp, srcDesc);
+  orb.detectAndCompute(refFeature.mat, refMask, refKp, refDesc);
+  orb.detectAndCompute(srcFeature.mat, srcMask, srcKp, srcDesc);
 
   const bf = new cv.BFMatcher(cv.NORM_HAMMING);
   const matches = new cv.DMatchVectorVector();
@@ -270,8 +330,6 @@ function alignWithOrb(cv: CvRuntime, ref: ImageData, src: ImageData): AlignResul
     }
   }
 
-  const homography: number[] = [];
-
   if (goodSrcPts.length >= 8) {
     const srcPts = cv.matFromArray(goodSrcPts.length / 2, 1, cv.CV_32FC2, goodSrcPts);
     const refPts = cv.matFromArray(goodRefPts.length / 2, 1, cv.CV_32FC2, goodRefPts);
@@ -284,22 +342,40 @@ function alignWithOrb(cv: CvRuntime, ref: ImageData, src: ImageData): AlignResul
         if (mask.data[i]) inlierCount++;
       }
 
-      const warped = new cv.Mat();
-      const dsize = new cv.Size(refMat.cols, refMat.rows);
-      cv.warpPerspective(srcMat, warped, H, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+      const h = H.data64F;
+      const homography = [
+        h[0] * srcFeature.scaleX / refFeature.scaleX,
+        h[1] * srcFeature.scaleY / refFeature.scaleX,
+        h[2] / refFeature.scaleX,
+        h[3] * srcFeature.scaleX / refFeature.scaleY,
+        h[4] * srcFeature.scaleY / refFeature.scaleY,
+        h[5] / refFeature.scaleY,
+        h[6] * srcFeature.scaleX,
+        h[7] * srcFeature.scaleY,
+        h[8]
+      ];
+      if (inlierCount >= MIN_AUTO_INLIERS && plausibleHomography(
+        homography,
+        srcMat.cols,
+        srcMat.rows,
+        refMat.cols,
+        refMat.rows
+      )) {
+        const fullResolutionH = cv.matFromArray(3, 3, cv.CV_64F, homography);
+        const warped = new cv.Mat();
+        const dsize = new cv.Size(refMat.cols, refMat.rows);
+        cv.warpPerspective(srcMat, warped, fullResolutionH, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
 
-      const aligned = matToImageData(cv, warped);
-      for (let i = 0; i < H.rows; i++) {
-        for (let j = 0; j < H.cols; j++) {
-          homography.push(H.data64F[i * H.cols + j]);
-        }
+        const aligned = matToImageData(cv, warped);
+
+        cleanup([
+          refMat, srcMat, refGray, srcGray, refMask, srcMask, refKp, srcKp,
+          refDesc, srcDesc, orb, bf, matches, srcPts, refPts, mask, H, fullResolutionH, warped,
+          ...(refFeature.resized ? [refFeature.mat] : []),
+          ...(srcFeature.resized ? [srcFeature.mat] : [])
+        ]);
+        return { aligned, homography, inlierCount, method: 'auto' };
       }
-
-      cleanup([
-        refMat, srcMat, refGray, srcGray, refMask, srcMask, refKp, srcKp,
-        refDesc, srcDesc, orb, bf, matches, srcPts, refPts, mask, H, warped
-      ]);
-      return { aligned, homography, inlierCount, method: 'auto' };
     }
 
     cleanup([srcPts, refPts, mask, H]);
@@ -309,37 +385,12 @@ function alignWithOrb(cv: CvRuntime, ref: ImageData, src: ImageData): AlignResul
   aligned.data.set(src.data);
   cleanup([
     refMat, srcMat, refGray, srcGray, refMask, srcMask, refKp, srcKp,
-    refDesc, srcDesc, orb, bf, matches
+    refDesc, srcDesc, orb, bf, matches,
+    ...(refFeature.resized ? [refFeature.mat] : []),
+    ...(srcFeature.resized ? [srcFeature.mat] : [])
   ]);
 
   return { aligned, homography: [], inlierCount: 0, method: 'none' };
-}
-
-/** Compute the pixel-difference image between two aligned images. */
-export async function computeDifference(ref: ImageData, aligned: ImageData): Promise<ImageData> {
-  await loadOpenCV();
-  const cv = getCv();
-  const refMat = frameToMat(cv, ref);
-  const alMat = frameToMat(cv, aligned);
-
-  const refGray = new cv.Mat();
-  const alGray = new cv.Mat();
-  cv.cvtColor(refMat, refGray, cv.COLOR_RGBA2GRAY);
-  cv.cvtColor(alMat, alGray, cv.COLOR_RGBA2GRAY);
-
-  const diff = new cv.Mat();
-  cv.absdiff(refGray, alGray, diff);
-
-  const thresh = new cv.Mat();
-  cv.threshold(diff, thresh, 30, 255, cv.THRESH_BINARY);
-
-  const rgba = new cv.Mat();
-  cv.cvtColor(thresh, rgba, cv.COLOR_GRAY2RGBA);
-
-  const out = matToImageData(cv, rgba);
-  cleanup([refMat, alMat, refGray, alGray, diff, thresh, rgba]);
-
-  return out;
 }
 
 /** Detect grid intersection anchors at the 4 extremes of the image. */
