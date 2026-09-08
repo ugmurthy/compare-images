@@ -7,6 +7,7 @@ export default defineConfig({
     exclude: []
   },
   server: {
+    allowedHosts: process.env.AMP_ORB ? true : undefined,
     port: 5173
   },
   build: {

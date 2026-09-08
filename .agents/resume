@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
+
+# Dependencies are restored with the snapshot. Never reinstall on wake.
+# Amp supervises the dev server declared in .amp/services.yaml.
+if ! command -v bun >/dev/null || [[ ! -d node_modules ]]; then
+  echo 'Orb dependencies are missing; run .agents/setup to repair them.' >&2
+  exit 1
+fi

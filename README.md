@@ -34,6 +34,25 @@ bun run dev
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
+## Amp Orbs
+
+`.agents/setup` uses Bun and Node from Amp's base image and installs dependencies
+with `bun install --frozen-lockfile`. Amp snapshots the prepared environment so
+fresh orbs can reuse it; a warm setup checks the lockfile without reinstalling
+unchanged dependencies. No secrets, databases, or additional system packages are
+required. `.agents/resume` only checks readiness and never installs dependencies.
+
+Start the supervised development server and get its authenticated portal URL:
+
+```bash
+amp orb services ensure
+```
+
+The service in `.amp/services.yaml` survives pause/resume. Vite accepts portal
+hostnames only inside an orb. Generated `.amp/portals/` files are Git-ignored.
+Run `bun run build` to verify the production bundle; there is no dedicated test
+or lint script.
+
 ## How It Works
 
 1. Load two sketch photographs (reference and source with changes)
