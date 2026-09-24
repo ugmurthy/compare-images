@@ -8,7 +8,7 @@
     restoreAlignment
   } from './lib/opencv';
   import type { AlignResult, CvState } from './lib/opencv';
-  import { listHistory, saveHistory } from './lib/history';
+  import { deleteHistory, listHistory, saveHistory } from './lib/history';
   import type { HistoryEntry, SavedPart } from './lib/history';
   import { completeAnchors } from './lib/manualAnchors';
   import type { ManualAnchor, Point } from './lib/manualAnchors';
@@ -48,6 +48,7 @@
   let historyOpen = $state(false);
   let historyEntries: HistoryEntry[] = $state([]);
   let currentEntry: HistoryEntry | null = $state(null);
+  let restoredMethod: 'manual' | 'auto' | null = $state(null);
   let selectedPartId = $state('');
   let savePanel = $state(false);
   let projectName = $state('');
@@ -225,6 +226,7 @@
     autoResult = null;
     manualEditing = true;
     currentEntry = null;
+    restoredMethod = null;
     selectedPartId = '';
     savePanel = false;
   }
@@ -374,7 +376,10 @@
           ? `Auto alignment complete · ${result.inlierCount} feature inliers.`
           : 'Automatic alignment could not find a reliable transformation. Try Manual anchors for rotated, cropped, or photo-to-drawing comparisons.';
       }
-      currentEntry = null;
+      if (result.method !== 'none') {
+        if (currentEntry?.alignment.method === method) currentEntry = null;
+        if (restoredMethod === method) restoredMethod = null;
+      }
       viewMode = 'side-by-side';
     } catch (error) {
       errorMsg = `${method === 'manual' ? 'Manual' : 'Automatic'} alignment failed: ${(error as Error).message}`;
@@ -437,6 +442,15 @@
     finally { saving = false; }
   }
 
+  async function removeHistoryEntry(id: string) {
+    await deleteHistory(id);
+    historyEntries = historyEntries.filter((entry) => entry.id !== id);
+    if (currentEntry?.id === id) {
+      currentEntry = null;
+      restoredMethod = null;
+    }
+  }
+
   async function openHistoryEntry(entry: HistoryEntry, referenceFile: File, sourceFile: File) {
     if (referenceFile.name !== entry.reference.name || sourceFile.name !== entry.source.name) throw new Error('Select files with the names shown in this entry.');
     if (!referenceFile.type.startsWith('image/') || !sourceFile.type.startsWith('image/')) throw new Error('Select two image files.');
@@ -466,6 +480,7 @@
       if (entry.alignment.method === 'manual') { manualResult = result; manualEditing = false; }
       else autoResult = result;
       currentEntry = entry;
+      restoredMethod = entry.alignment.method;
       viewMode = 'side-by-side';
       historyOpen = false;
       statusMsg = 'Saved alignment restored without realigning.';
@@ -501,7 +516,7 @@
 
 <main>
   {#if historyOpen}
-    <HistoryView entries={historyEntries} onopen={openHistoryEntry} />
+    <HistoryView entries={historyEntries} onopen={openHistoryEntry} ondelete={removeHistoryEntry} />
   {:else if !refImg || !srcImg}
     <section class="upload-section">
       <div class="intro">
@@ -610,7 +625,7 @@
                 </button>
               </div>
             {/if}
-            <button class="secondary-btn" onclick={showSavePanel}>Save comparison</button>
+            <button class="secondary-btn" onclick={showSavePanel} disabled={restoredMethod === comparisonMode}>Save comparison</button>
           {/if}
 
           {#if comparisonMode === 'manual'}
@@ -623,7 +638,7 @@
                 {processingMode === 'manual' ? 'Aligning…' : `Apply ${completeManualAnchors.length} anchors`}
               </button>
             {:else}
-              <button class="secondary-btn" onclick={() => manualEditing = true}>Edit anchors</button>
+              <button class="secondary-btn" onclick={() => manualEditing = true} disabled={restoredMethod === 'manual'}>Edit anchors</button>
             {/if}
           {:else if comparisonMode === 'auto'}
             <button
@@ -834,6 +849,7 @@
   .primary-btn { align-items: center; display: inline-flex; gap: 0.45rem; justify-content: center; }
   .secondary-btn { background: #fff; border: 1px solid var(--border); color: var(--text); }
   .primary-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+  .secondary-btn:disabled { background: #f1f3f5; color: var(--muted); cursor: not-allowed; opacity: 0.65; }
 
   .view-toggle { background: var(--control-bg); border: 1px solid var(--border); border-radius: 7px; display: flex; padding: 0.18rem; }
   .view-toggle button { background: transparent; border: 0; border-radius: 5px; color: var(--muted); cursor: pointer; font-size: 0.72rem; font-weight: 800; padding: 0.42rem 0.55rem; }

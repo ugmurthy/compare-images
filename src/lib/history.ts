@@ -50,3 +50,7 @@ export async function listHistory(): Promise<HistoryEntry[]> {
 export function saveHistory(entry: HistoryEntry): Promise<IDBValidKey> {
   return transact('readwrite', (store) => store.put(entry));
 }
+
+export function deleteHistory(id: string): Promise<undefined> {
+  return transact('readwrite', (store) => store.delete(id));
+}
