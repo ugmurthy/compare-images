@@ -7,31 +7,28 @@
     refImg,
     srcImg,
     alignResult,
-    diffImageData,
     viewMode,
     overlayOpacity,
     onrotatesource,
     sourceRotating = false,
-    differenceProcessing = false,
     region = $bindable(null),
+    savedRegions = [],
     oncompareparts
   }: {
     refImg: HTMLImageElement;
     srcImg: HTMLImageElement;
     alignResult: AlignResult | null;
-    diffImageData: ImageData | null;
     viewMode: string;
     overlayOpacity: number;
     onrotatesource?: () => void;
     sourceRotating?: boolean;
-    differenceProcessing?: boolean;
     region?: Region | null;
+    savedRegions?: Region[];
     oncompareparts?: () => void;
   } = $props();
 
   let refCanvas: HTMLCanvasElement = $state()!;
   let alignedCanvas: HTMLCanvasElement = $state()!;
-  let diffCanvas: HTMLCanvasElement = $state()!;
   let overlayCanvas: HTMLCanvasElement = $state()!;
   let cachedAlignResult: AlignResult | null = null;
   let cachedAlignedCanvas: HTMLCanvasElement | null = null;
@@ -59,15 +56,6 @@
         alignedCanvas.height = srcImg.naturalHeight;
         ctx.drawImage(srcImg, 0, 0);
       }
-    }
-  });
-
-  $effect(() => {
-    if (diffImageData && diffCanvas) {
-      diffCanvas.width = diffImageData.width;
-      diffCanvas.height = diffImageData.height;
-      const ctx = diffCanvas.getContext('2d')!;
-      ctx.putImageData(diffImageData, 0, 0);
     }
   });
 
@@ -105,7 +93,7 @@
     <div class="parts-tools">
       <div>
         <strong>Compare a detail</strong>
-        <p>{viewMode === 'overlay' ? 'Switch to Side by side or Difference to select a rectangle on the reference.' : 'Drag a rectangle on the reference. Keyboard: arrows to move, Enter for each corner, Escape to clear.'}</p>
+        <p>{viewMode === 'overlay' ? 'Switch to Side by side to select a rectangle on the reference.' : 'Drag a rectangle on the reference. Keyboard: arrows to move, Enter for each corner, Escape to clear.'}</p>
         <span role="status">{region ? `Selected: ${region.width} × ${region.height} px at (${region.x}, ${region.y})` : 'No rectangle selected'}</span>
       </div>
       <button class="rotate-btn" onclick={() => region = null} disabled={!region}>Clear selection</button>
@@ -117,7 +105,7 @@
       <div class="canvas-card">
         <span class="canvas-label">Reference</span>
         {#if alignResult && oncompareparts}
-          <RegionSelector image={refImg} bind:region />
+          <RegionSelector image={refImg} bind:region {savedRegions} />
         {:else}
           <canvas bind:this={refCanvas}></canvas>
         {/if}
@@ -142,27 +130,6 @@
         <canvas bind:this={overlayCanvas}></canvas>
       </div>
     </div>
-  {:else if viewMode === 'diff'}
-    <div class="view diff">
-      <div class="canvas-card">
-        <span class="canvas-label">Reference</span>
-        {#if alignResult && oncompareparts}
-          <RegionSelector image={refImg} bind:region />
-        {:else}
-          <canvas bind:this={refCanvas}></canvas>
-        {/if}
-      </div>
-      <div class="canvas-card" aria-busy={differenceProcessing}>
-        <span class="canvas-label">Differences</span>
-        <canvas bind:this={diffCanvas}></canvas>
-        {#if differenceProcessing}
-          <div class="processing-overlay" role="status" aria-live="polite">
-            <span class="canvas-spinner" aria-hidden="true"></span>
-            <span>Computing differences…</span>
-          </div>
-        {/if}
-      </div>
-    </div>
   {/if}
 </section>
 
@@ -184,8 +151,7 @@
     gap: 0.9rem;
   }
 
-  .side-by-side,
-  .diff {
+  .side-by-side {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -239,32 +205,6 @@
   .rotate-btn:disabled { cursor: wait; opacity: 0.55; }
   .rotate-btn span { font-size: 1rem; line-height: 0.7; }
 
-  .processing-overlay {
-    align-items: center;
-    background: rgba(255, 255, 255, 0.88);
-    color: var(--muted);
-    display: flex;
-    flex-direction: column;
-    font-size: 0.78rem;
-    font-weight: 800;
-    gap: 0.65rem;
-    inset: 2.45rem 0 0;
-    justify-content: center;
-    position: absolute;
-    z-index: 2;
-  }
-
-  .canvas-spinner {
-    animation: spin 0.75s linear infinite;
-    border: 3px solid #dce3eb;
-    border-radius: 50%;
-    border-top-color: var(--accent);
-    height: 1.65rem;
-    width: 1.65rem;
-  }
-
-  @keyframes spin { to { transform: rotate(360deg); } }
-
   canvas {
     width: 100%;
     height: min(72vh, 820px);
@@ -281,8 +221,7 @@
   }
 
   @media (max-width: 820px) {
-    .side-by-side,
-    .diff {
+    .side-by-side {
       grid-template-columns: 1fr;
     }
   }

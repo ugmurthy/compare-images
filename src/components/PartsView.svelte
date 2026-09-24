@@ -1,18 +1,26 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Region } from '../lib/region';
+  import type { SavedPart } from '../lib/history';
+  import NotePreview from './NotePreview.svelte';
 
-  let { reference, aligned, region, onback }: {
+  let { reference, aligned, region, onback, parts = [], selectedPart = null, onprevious, onnext, onsave }: {
     reference: HTMLImageElement;
     aligned: ImageData;
     region: Region;
     onback: () => void;
+    parts?: SavedPart[];
+    selectedPart?: SavedPart | null;
+    onprevious?: () => void;
+    onnext?: () => void;
+    onsave?: () => void;
   } = $props();
 
   let stacked = $state(true);
   let heading: HTMLHeadingElement;
   let referenceCanvas: HTMLCanvasElement;
   let sourceCanvas: HTMLCanvasElement;
+  let partIndex = $derived(parts.findIndex((part) => part.id === selectedPart?.id));
 
   onMount(() => heading.focus());
 
@@ -29,8 +37,9 @@
 
 <section class="parts-page" aria-label="Compare parts">
   <div class="toolbar">
-    <button onclick={onback}>← Back to comparison</button>
+    <button onclick={onback}>← Back to whole image</button>
     <div class="layout-tools" aria-label="Parts layout">
+      {#if onsave}<button onclick={onsave}>Save this part</button>{/if}
       <button aria-label="Stack vertically" title="Stack vertically" aria-pressed={stacked} onclick={() => stacked = true}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="7" rx="1" /><rect x="3" y="14" width="18" height="7" rx="1" /></svg>
       </button>
@@ -39,7 +48,8 @@
       </button>
     </div>
   </div>
-  <h2 bind:this={heading} tabindex="-1">Compare parts</h2>
+  <h2 bind:this={heading} tabindex="-1">Compare parts{selectedPart ? `: ${selectedPart.name}` : ''}</h2>
+  {#if selectedPart}<NotePreview note={selectedPart.note} />{/if}
   <p>Same aligned region · {region.width} × {region.height} px · position ({region.x}, {region.y})</p>
   <div class="parts-grid" class:stacked>
     <figure>
@@ -51,6 +61,14 @@
       <canvas bind:this={sourceCanvas} aria-label="Corresponding aligned source region"></canvas>
     </figure>
   </div>
+  {#if selectedPart && parts.length}
+    <nav class="part-nav" aria-label="Saved parts in this alignment">
+      <strong>Saved parts · Part {partIndex + 1} of {parts.length}</strong>
+      <button onclick={onprevious} disabled={partIndex <= 0}>← {parts[partIndex - 1]?.name ?? 'Previous part'}</button>
+      <span>{selectedPart?.name}</span>
+      <button onclick={onnext} disabled={partIndex < 0 || partIndex >= parts.length - 1}>{parts[partIndex + 1]?.name ?? 'Next part'} →</button>
+    </nav>
+  {/if}
 </section>
 
 <style>
@@ -59,6 +77,7 @@
   .layout-tools { display: flex; gap: 0.3rem; }
   button { background: #fff; border: 1px solid var(--border); border-radius: 6px; color: var(--accent); cursor: pointer; font-weight: 800; min-height: 44px; padding: 0.5rem 0.65rem; }
   button[aria-pressed='true'] { background: #eaf1ff; border-color: var(--accent); }
+  button:disabled { cursor: not-allowed; opacity: 0.5; }
   button svg { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; }
   h2 { font-size: 1.15rem; margin: 0; }
   p { color: var(--muted); font-size: 0.78rem; margin: 0.35rem 0 1rem; }
@@ -68,6 +87,8 @@
   figcaption { padding: 0.65rem 0.75rem; background: #fafafa; border-bottom: 1px solid var(--border); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--muted); }
   canvas { display: block; width: 100%; height: min(65vh, 650px); object-fit: contain; background: #f1f3f5; }
   .stacked canvas { height: min(35vh, 400px); }
+  .part-nav { align-items: center; display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 1rem; }
+  .part-nav strong { margin-right: auto; }
   @media (max-width: 540px) {
     .parts-page { padding: 0.65rem; }
     .parts-grid { gap: 0.4rem; }

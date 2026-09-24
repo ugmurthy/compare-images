@@ -247,6 +247,28 @@ export async function alignImagesManually(
   return result;
 }
 
+/** Apply a previously saved source-to-reference transform without estimating alignment. */
+export async function restoreAlignment(ref: ImageData, src: ImageData, saved: {
+  homography: number[];
+  method: 'manual' | 'auto';
+  inlierCount: number;
+}): Promise<AlignResult> {
+  if (saved.homography.length !== 9 || saved.homography.some((value) => !Number.isFinite(value))) {
+    throw new Error('Invalid saved alignment');
+  }
+  await loadOpenCV();
+  const cv = getCv();
+  const source = frameToMat(cv, src);
+  const matrix = cv.matFromArray(3, 3, cv.CV_64F, saved.homography);
+  const warped = new cv.Mat();
+  try {
+    cv.warpPerspective(source, warped, matrix, new cv.Size(ref.width, ref.height), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+    return { aligned: matToImageData(cv, warped), ...saved };
+  } finally {
+    cleanup([source, matrix, warped]);
+  }
+}
+
 function alignWithManualAnchors(
   cv: CvRuntime,
   ref: ImageData,

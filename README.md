@@ -13,8 +13,8 @@ A web application for aligning and comparing two similar pencil/charcoal sketch 
 - **Comparison Views**:
   - Side-by-side: reference vs aligned source
   - Overlay: blend aligned source on top of reference with adjustable opacity
-  - Difference: denoised binary change map with adjustable intensity and minimum-region thresholds
-- **Compare Parts**: After alignment, drag a rectangle on the reference in Side by side or Difference view, then click **Compare parts**. The dedicated page shows that region from the reference and aligned source, with icon buttons for stacked or side-by-side layouts. Back preserves your selection; changing the alignment clears it. Keyboard selection supports arrow keys, Shift for 10-pixel steps, Enter to mark each corner, and Escape to clear.
+- **Compare Parts**: After alignment, drag a rectangle on the reference in Side by side view, then click **Compare parts**. The dedicated page shows that region from the reference and aligned source, with icon buttons for stacked or side-by-side layouts. Back preserves your selection; changing the alignment clears it. Keyboard selection supports arrow keys, Shift for 10-pixel steps, Enter to mark each corner, and Escape to clear.
+- **History**: Save a timestamped alignment under a project, then save named parts and notes from the Parts view. A project can contain many comparisons sharing a reference filename. Select a history entry and reselect its image files to restore the alignment without matching features or anchors again. History metadata is stored as JSON objects in this browser's IndexedDB; the images themselves are not stored.
 
 ## Tech Stack
 
@@ -63,7 +63,7 @@ or lint script.
    - **Auto align** uses ORB feature detection, BF matching, Lowe's ratio test, and RANSAC
 3. In Manual anchors, click matching locations, drag or nudge points to refine them, and optionally enable and position a visual grid
 4. Apply the anchors or run automatic alignment to warp the source into the reference coordinate space
-5. Inspect aligned results using Side-by-Side, Overlay, or Difference views
+5. Inspect aligned results using Side-by-Side or Overlay, and save the comparison and selected parts if desired
 
 ## OpenCV Architecture
 
@@ -81,6 +81,6 @@ build or backend service without changing the Svelte components.
 ## MVP Limitations
 
 - OpenCV.js is self-hosted but still large (~10MB, cached after first load)
-- OpenCV alignment remains on the main thread with resolution-bounded feature detection; full-resolution difference filtering runs in a dedicated Web Worker
+- OpenCV alignment remains on the main thread with resolution-bounded feature detection
 - Grid detection works best with clear, high-contrast grid lines
-- No full history/redo or save functionality yet
+- Browser history is local to this browser/profile; clearing site data removes it, and reopening requires the original images

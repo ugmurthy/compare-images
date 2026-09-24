@@ -2,9 +2,10 @@
   import type { Point } from '../lib/manualAnchors';
   import { regionFromPoints, type Region } from '../lib/region';
 
-  let { image, region = $bindable(null) }: {
+  let { image, region = $bindable(null), savedRegions = [] }: {
     image: HTMLImageElement;
     region: Region | null;
+    savedRegions?: Region[];
   } = $props();
 
   let surface: SVGSVGElement;
@@ -100,6 +101,12 @@
   onkeydown={keydown}
 >
   <image href={image.src} width={image.naturalWidth} height={image.naturalHeight} />
+  {#each savedRegions as saved, index}
+    <g pointer-events="none">
+      <rect x={saved.x} y={saved.y} width={saved.width} height={saved.height} fill="#2563eb15" stroke="#2563eb" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" />
+      <text x={saved.x + 5} y={saved.y + 18} fill="#1d4ed8" font-size="16" font-weight="bold">{index + 1}</text>
+    </g>
+  {/each}
   {#if region}
     <rect x={region.x} y={region.y} width={region.width} height={region.height} fill="#2563eb22" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke" />
   {/if}
