@@ -9,23 +9,35 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:wght@400;500;600&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --bg: #f5f3ee;
+        --paper: #f5f3ee;
+        --bg: var(--paper);
         --surface: #ffffff;
-        --border: #e6e1d6;
+        --surface-frost: rgba(255, 255, 255, 0.72);
+        --hairline: #e6e1d6;
+        --border: var(--hairline);
+        --dash: #d8d2c4;
         --border-strong: #c9c3b8;
-        --control-bg: #f5f3ee;
-        --text: #1e1f22;
-        --muted: #75726b;
+        --control-bg: var(--paper);
+        --ink: #1e1f22;
+        --text: var(--ink);
+        --ink-muted: #75726b;
+        --muted: var(--ink-muted);
         --accent: #3050d0;
         --accent-hover: #243fb0;
-        --accent-soft: rgba(48, 80, 208, 0.12);
-        --danger: #c83232;
-        --success: #138a45;
+        --accent-tint: rgba(48, 80, 208, 0.10);
+        --accent-soft: var(--accent-tint);
+        --on-accent: #ffffff;
+        --ok: #22a447;
+        --success: var(--ok);
+        --danger: #c8412f;
+        --tooltip: var(--ink);
+        --scrim: rgba(30, 31, 34, 0.32);
+        --shadow: 0 1px 2px rgba(30,31,34,0.04), 0 8px 24px rgba(30,31,34,0.06);
       }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        background: radial-gradient(circle at 25% 15%, #ffffff 0, transparent 60%), var(--bg);
+        background: var(--paper);
         color: var(--text);
         min-height: 100vh;
       }
@@ -34,10 +46,9 @@
       input {
         font: inherit;
       }
-      button:focus-visible,
-      input:focus-visible,
+      :is(button, input, textarea, a, [role="button"]):focus-visible,
       label:focus-within {
-        outline: 3px solid var(--accent-soft);
+        outline: 2px solid var(--accent);
         outline-offset: 2px;
       }
     </style>

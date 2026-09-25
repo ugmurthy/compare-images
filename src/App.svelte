@@ -50,7 +50,10 @@
   let restoredMethod: 'manual' | 'auto' | null = $state(null);
   let selectedPartId = $state('');
   let savePanel = $state(false);
+  let savingPart = $state(false);
   let actionMenu = $state(false);
+  let actionButton: HTMLButtonElement = $state()!;
+  let actionMenuElement: HTMLElement = $state()!;
   let saveDialog: HTMLDivElement = $state()!;
   let returnFocus: HTMLElement | null = null;
   let projectName = $state('');
@@ -390,9 +393,10 @@
     }
   }
 
-  function showSavePanel() {
+  function showSavePanel(part = false) {
     returnFocus = document.querySelector<HTMLElement>('.fab-area .fab, .part-actions .fab') ?? document.activeElement as HTMLElement;
     actionMenu = false;
+    savingPart = part;
     projectName = currentEntry?.projectName ?? refFile?.name.replace(/\.[^.]+$/, '') ?? '';
     entryNote = '';
     partName = '';
@@ -414,6 +418,20 @@
     const last = focusable.at(-1);
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }
+
+  function closeActionMenu() {
+    actionMenu = false;
+    void tick().then(() => actionButton?.focus());
+  }
+
+  function menuKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') { event.preventDefault(); closeActionMenu(); return; }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    const items = [...actionMenuElement.querySelectorAll<HTMLElement>('button:not(:disabled), .menu-file input')];
+    const index = items.findIndex((item) => item === document.activeElement);
+    items[(index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
   }
 
   function newEntry(): HistoryEntry {
@@ -528,16 +546,16 @@
   {:else}<span></span>{/if}
   <div class="header-actions">
     {#if !historyOpen && !(comparisonMode === 'manual' && manualEditing && refImg && srcImg)}<button class="secondary-btn" onclick={() => { historyOpen = true; actionMenu = false; }}>◷ &nbsp; History</button>{/if}
-    <span class="runtime-pill" class:ready={cvState === 'ready'} class:error={cvState === 'error'}>
+    <button class="runtime-pill" class:ready={cvState === 'ready'} class:error={cvState === 'error'} onclick={() => { if (cvState === 'error') void loadCv(); }} disabled={cvState !== 'error'} title={cvState === 'error' ? 'Retry OpenCV' : runtimeLabel}>
       <span class="runtime-dot"></span>{runtimeLabel}
-    </span>
+    </button>
   </div>
 </header>
 
 <main>
   {#if historyOpen}
     <div class="history-intro"><h2>History</h2><p>Saved alignments on this browser. Images stay on your device.</p></div>
-    <HistoryView entries={historyEntries} onopen={openHistoryEntry} ondelete={removeHistoryEntry} />
+    <HistoryView entries={historyEntries} onopen={openHistoryEntry} ondelete={removeHistoryEntry} onstart={() => historyOpen = false} />
   {:else if !refImg || !srcImg}
     <section class="upload-section">
       <div class="intro">
@@ -556,7 +574,7 @@
   {:else if showingParts && selectedRegion && activeResult}
     <PartsView reference={refImg} aligned={activeResult.aligned} region={selectedRegion} onback={closeParts}
       parts={savedParts} selectedPart={selectedPart} onprevious={() => adjacentPart(-1)} onnext={() => adjacentPart(1)}
-      onsave={showSavePanel} onadjust={closeParts} onnewregion={() => { selectedRegion = null; void closeParts(); }} />
+      onsave={() => showSavePanel(true)} onsavecomparison={() => showSavePanel()} onadjust={closeParts} onnewregion={() => { selectedRegion = null; void closeParts(); }} />
   {:else}
     <section class="workspace-shell">
       <div class="workspace-nav">
@@ -571,7 +589,7 @@
       {#if !(comparisonMode === 'manual' && manualEditing)}
       <div class="workspace-header">
         <div class="workspace-actions">
-          {#if activeResult && !(comparisonMode === 'manual' && manualEditing)}
+          {#if !(comparisonMode === 'manual' && manualEditing)}
             <div class="view-toggle" aria-label="Result display">
               <button class:active={viewMode === 'side-by-side'} aria-pressed={viewMode === 'side-by-side'} aria-label="Side by side" title="Side by side" onclick={() => selectViewMode('side-by-side')}>◫</button>
               <button class:active={viewMode === 'stacked'} aria-pressed={viewMode === 'stacked'} aria-label="Stack vertically" title="Stack vertically" onclick={() => selectViewMode('stacked')}>☷</button>
@@ -598,9 +616,8 @@
             {/if}
           {/if}
 
-          {#if comparisonMode === 'visual'}
-            <button class="secondary-btn" onclick={rotateSource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise">↻ Rotate source</button>
-          {/if}
+          <button class="secondary-btn" onclick={rotateSource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise" title="Rotate source image 90 degrees clockwise">↻</button>
+          <button class="secondary-btn" onclick={() => { selectViewMode('side-by-side'); void tick().then(() => document.querySelector<HTMLElement>('[aria-label^="Select reference rectangle"]')?.focus()); }} disabled={!activeResult} aria-label="Select region on reference" title="Select region on reference">▧</button>
         </div>
       </div>
       {/if}
@@ -628,10 +645,11 @@
             {refImg}
             {srcImg}
             alignResult={comparisonMode === 'visual' ? null : activeResult}
-            viewMode={comparisonMode === 'visual' || !activeResult ? 'side-by-side' : viewMode}
+            {viewMode}
             {overlayOpacity}
             referenceName={refFile?.name ?? 'Reference'}
             sourceName={srcFile?.name ?? 'Source'}
+            {sourceRotations}
             bind:region={selectedRegion}
             savedRegions={savedParts.map((part) => part.region)}
             oncompareparts={compareParts}
@@ -650,47 +668,50 @@
     {#if !(comparisonMode === 'manual' && manualEditing)}
       <div class="fab-area">
         {#if actionMenu}
-          <nav class="action-menu" aria-label="Comparison actions">
-            {#if activeResult}<button onclick={() => { actionMenu = false; compareParts(); }} disabled={!selectedRegion}>Compare parts</button>{/if}
+          <div class="action-menu" role="menu" aria-label="Comparison actions" tabindex="-1" bind:this={actionMenuElement} onkeydown={menuKeydown}>
+            <button role="menuitem" onclick={() => { actionMenu = false; compareParts(); }} disabled={!selectedRegion || !activeResult} aria-disabled={!selectedRegion || !activeResult}>Compare parts</button>
+            <button role="menuitem" onclick={() => { actionMenu = false; selectViewMode('side-by-side'); void tick().then(() => document.querySelector<HTMLElement>('[aria-label^="Select reference rectangle"]')?.focus()); }} disabled={!activeResult} aria-disabled={!activeResult}>Select region on reference</button>
             {#if savedParts.length && activeResult}
               <span>Saved parts ({savedParts.length})</span>
-              {#each savedParts as part}<button onclick={() => { actionMenu = false; openSavedPart(part); }}>{part.name}</button>{/each}
+              {#each savedParts as part}<button role="menuitem" onclick={() => { actionMenu = false; openSavedPart(part); }}>{part.name}</button>{/each}
             {/if}
-            {#if selectedRegion}<button onclick={() => { selectedRegion = null; actionMenu = false; }}>Clear region selection</button>{/if}
-            {#if activeResult}<button onclick={showSavePanel} disabled={restoredMethod === comparisonMode}>Save comparison</button>{/if}
+            {#if selectedRegion}<button role="menuitem" onclick={() => { selectedRegion = null; actionMenu = false; }}>Clear region selection</button>{/if}
+            <button role="menuitem" onclick={() => showSavePanel()} disabled={!activeResult || restoredMethod === comparisonMode} aria-disabled={!activeResult || restoredMethod === comparisonMode}>Save comparison</button>
             <span>Alignment</span>
-            {#if comparisonMode === 'auto'}<button onclick={() => { actionMenu = false; void processImages('auto'); }} disabled={cvState !== 'ready' || processingMode !== null}>{processingMode === 'auto' ? 'Aligning…' : 'Run auto align again'}</button>
-            {:else}<button onclick={() => { selectMode('auto'); actionMenu = false; void processImages('auto'); }} disabled={cvState !== 'ready'}>Auto align</button>{/if}
-            <button onclick={() => { selectMode('manual'); manualEditing = true; actionMenu = false; }} disabled={restoredMethod === 'manual' && comparisonMode === 'manual'}>Edit manual anchors</button>
-            <button onclick={() => { selectMode('visual'); actionMenu = false; }}>View originals</button>
-            <label class="menu-file">Replace reference<input type="file" accept="image/*" onchange={(event) => { handleCompactFile(event, 'ref'); actionMenu = false; }} /></label>
-            <label class="menu-file">Replace source<input type="file" accept="image/*" onchange={(event) => { handleCompactFile(event, 'src'); actionMenu = false; }} /></label>
-            <button onclick={() => { clearAll(); actionMenu = false; }}>New comparison</button>
-          </nav>
+            {#if comparisonMode === 'auto'}<button role="menuitem" onclick={() => { actionMenu = false; void processImages('auto'); }} disabled={cvState !== 'ready' || processingMode !== null}>{processingMode === 'auto' ? 'Aligning…' : 'Run auto align again'}</button>
+            {:else}<button role="menuitem" onclick={() => { selectMode('auto'); actionMenu = false; void processImages('auto'); }} disabled={cvState !== 'ready'}>Run auto align</button>{/if}
+            <button role="menuitem" onclick={() => { selectMode('manual'); manualEditing = true; actionMenu = false; }} disabled={restoredMethod === 'manual' && comparisonMode === 'manual'}>Edit manual anchors {comparisonMode === 'manual' ? '✓' : ''}</button>
+            <button role="menuitem" onclick={() => { selectMode('visual'); actionMenu = false; }}>View originals {comparisonMode === 'visual' ? '✓' : ''}</button>
+            <label class="menu-file">Replace reference<input role="menuitem" aria-label="Replace reference" type="file" accept="image/*" onchange={(event) => { handleCompactFile(event, 'ref'); actionMenu = false; }} /></label>
+            <label class="menu-file">Replace source<input role="menuitem" aria-label="Replace source" type="file" accept="image/*" onchange={(event) => { handleCompactFile(event, 'src'); actionMenu = false; }} /></label>
+            <button role="menuitem" onclick={() => { clearAll(); actionMenu = false; }}>New comparison</button>
+          </div>
         {/if}
-        <button class="fab" aria-label={actionMenu ? 'Close actions' : 'Open actions'} aria-expanded={actionMenu} onclick={() => actionMenu = !actionMenu}>{actionMenu ? '×' : '+'}</button>
+        <button class="fab" bind:this={actionButton} aria-label={actionMenu ? 'Close actions' : 'Open actions'} aria-expanded={actionMenu} onclick={() => { actionMenu = !actionMenu; if (actionMenu) void tick().then(() => actionMenuElement.querySelector<HTMLElement>('button:not(:disabled)')?.focus()); }}>{actionMenu ? '×' : '+'}</button>
       </div>
     {/if}
   {/if}
 </main>
 
+<svelte:window onpointerdown={(event) => { if (actionMenu && !(event.target as Element).closest('.fab-area')) actionMenu = false; }} />
+
 {#if savePanel}
   <div class="modal-scrim" role="presentation">
     <div class="save-dialog" role="dialog" aria-modal="true" aria-labelledby="save-heading" tabindex="-1" bind:this={saveDialog} onkeydown={dialogKeydown}>
-      <form class="save-panel" onsubmit={(event) => { event.preventDefault(); if (showingParts) void savePart(); else void saveComparison(); }}>
+      <form class="save-panel" onsubmit={(event) => { event.preventDefault(); if (savingPart) void savePart(); else void saveComparison(); }}>
         <button type="button" class="dialog-close" aria-label="Close save dialog" onclick={closeSavePanel}>×</button>
-        <h2 id="save-heading">{showingParts ? 'Save this part' : 'Save comparison'}</h2>
-        <p>{showingParts ? 'Keep this detail with your saved alignment.' : 'Save this alignment as a new entry. Images remain on your device.'}</p>
-        {#if !showingParts || !currentEntry}
+        <h2 id="save-heading">{savingPart ? 'Save this part' : 'Save comparison'}</h2>
+        <p>{savingPart ? 'Keep this detail with your saved alignment.' : 'Save this alignment as a new entry. Images remain on your device.'}</p>
+        {#if !savingPart || !currentEntry}
           <label>Project name <input bind:value={projectName} list="matching-projects" required /></label>
           <datalist id="matching-projects">{#each matchingProjects as name}<option value={name}></option>{/each}</datalist>
           <label>Entry note (optional) <textarea bind:value={entryNote}></textarea></label>
         {/if}
-        {#if showingParts}
+        {#if savingPart}
           <label>Part name <input bind:value={partName} required /></label>
           <label>Part note (optional) <textarea bind:value={partNote}></textarea></label>
         {/if}
-        <div class="save-actions"><button type="button" class="secondary-btn" onclick={closeSavePanel}>Cancel</button><button class="primary-btn" disabled={saving}>{showingParts ? 'Save part' : 'Save entry'}</button></div>
+        <div class="save-actions"><button type="button" class="secondary-btn" onclick={closeSavePanel}>Cancel</button><button class="primary-btn" disabled={saving}>{savingPart ? 'Save part' : 'Save entry'}</button></div>
         {#if errorMsg}<p class="save-error" role="alert">{errorMsg}</p>{/if}
       </form>
     </div>
@@ -851,7 +872,7 @@
   .runtime-pill, .secondary-btn { background: #fff; border: 1px solid var(--border); border-radius: 999px; box-shadow: 0 2px 12px #352b1b0b; color: var(--text); font-weight: 500; padding: 0.65rem 1rem; }
   .runtime-pill.ready { background: #fff; border-color: var(--border); color: var(--muted); }
   .runtime-pill.ready .runtime-dot { background: #13ad50; }
-  main { max-width: 1600px; padding: 0 clamp(1rem, 3vw, 3rem) 10rem; }
+  main { grid-template-columns: minmax(0, 1fr); max-width: 1600px; padding: 0 clamp(1rem, 3vw, 3rem) 10rem; }
   .upload-section { background: transparent; border: 0; margin: 2rem auto 0; max-width: 1340px; padding: 0; }
   .intro { margin: 0 auto 2.5rem; text-align: center; }
   .intro h2 { font-size: clamp(2.5rem, 4vw, 3.7rem); line-height: 1.1; }
@@ -918,5 +939,36 @@
     .action-menu { max-width: calc(100vw - 6rem); min-width: 180px; }
     .modal-scrim { align-items: flex-end; padding: 0; }
     .save-dialog { border-radius: 18px 18px 0 0; max-height: calc(100dvh - env(safe-area-inset-top) - 1rem); padding-bottom: env(safe-area-inset-bottom); width: 100%; }
+  }
+  .app-header { align-items: flex-start; background: none; border: 0; box-shadow: none; gap: 1rem; min-height: 88px; padding: calc(24px + env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 0 max(24px, env(safe-area-inset-left)); }
+  .app-header h1 { font-size: 20px; font-weight: 500; line-height: 40px; }
+  .app-header .secondary-btn, .runtime-pill { box-shadow: var(--shadow); height: 40px; padding: 0 16px; }
+  .runtime-pill:disabled { cursor: default; }
+  .runtime-pill.ready .runtime-dot { background: var(--ok); }
+  .workspace-nav { box-shadow: var(--shadow); min-height: 88px; }
+  .workspace-nav h2 { font-size: 26px; line-height: 32px; }
+  .workspace-header { min-height: 64px; }
+  .workspace-header { box-shadow: var(--shadow); bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .view-toggle button { background: none; border-radius: 999px; height: 44px; min-width: 44px; }
+  .view-toggle button.active { background: var(--accent-tint); color: var(--accent); }
+  .workspace-actions > .secondary-btn { border: 0; box-shadow: none; font-size: 1.5rem; height: 44px; min-width: 44px; padding: 0; }
+  .fab-area { bottom: auto; right: max(24px, calc((100vw - 1500px) / 2)); top: 50%; transform: translateY(-50%); }
+  .fab { box-shadow: 0 6px 20px rgba(48,80,208,0.28); height: 56px; width: 56px; }
+  .action-menu { bottom: auto; box-shadow: var(--shadow); max-height: calc(100dvh - 130px); min-width: 260px; overflow-y: auto; right: calc(100% + 12px); top: 50%; transform: translateY(-50%); }
+  .action-menu button { min-height: 40px; }
+  .action-menu button:first-child:not(:disabled) { background: var(--accent-tint); color: var(--accent); }
+  .modal-scrim { background: var(--scrim); }
+  .save-dialog { border: 1px solid var(--hairline); border-radius: 14px; box-shadow: var(--shadow); max-width: 480px; }
+  .save-panel input, .save-panel textarea { border-radius: 10px; min-height: 40px; }
+  @media (max-width: 1099px) { .fab-area { bottom: calc(112px + env(safe-area-inset-bottom)); right: 16px; top: auto; transform: none; } .action-menu { bottom: calc(100% + 12px); right: 0; top: auto; transform: none; } }
+  @media (max-width: 719px) {
+    .app-header { padding: calc(16px + env(safe-area-inset-top)) 16px 0; }
+    main { padding-inline: 16px; }
+    .workspace-nav { width: 100%; }
+    .workspace-body { margin-right: 0; }
+    .workspace-header { bottom: calc(24px + env(safe-area-inset-bottom)); }
+    .fab { height: 48px; width: 48px; }
+    .modal-scrim { align-items: flex-end; padding: 0; }
+    .save-dialog { border-radius: 14px 14px 0 0; max-width: none; padding-bottom: env(safe-area-inset-bottom); width: 100%; }
   }
 </style>

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import type { Region } from '../lib/region';
   import type { SavedPart } from '../lib/history';
   import NotePreview from './NotePreview.svelte';
 
-  let { reference, aligned, region, onback, onadjust, onnewregion, parts = [], selectedPart = null, onprevious, onnext, onsave }: {
+  let { reference, aligned, region, onback, onadjust, onnewregion, parts = [], selectedPart = null, onprevious, onnext, onsave, onsavecomparison }: {
     reference: HTMLImageElement;
     aligned: ImageData;
     region: Region;
@@ -16,19 +16,25 @@
     onprevious?: () => void;
     onnext?: () => void;
     onsave?: () => void;
+    onsavecomparison?: () => void;
   } = $props();
 
   let mode = $state<'side-by-side' | 'stacked' | 'overlay'>('overlay');
   let opacity = $state(0.5);
   let playing = $state(false);
   let menuOpen = $state(false);
+  let menuButton: HTMLButtonElement = $state()!;
+  let menuElement: HTMLElement = $state()!;
   let heading: HTMLHeadingElement;
   let referenceCanvas: HTMLCanvasElement;
   let sourceCanvas: HTMLCanvasElement;
   let frame: number | null = null;
   let partIndex = $derived(parts.findIndex((part) => part.id === selectedPart?.id));
 
-  onMount(() => heading.focus());
+  onMount(() => {
+    if (window.innerWidth < 720) mode = 'stacked';
+    heading.focus();
+  });
   onDestroy(stop);
 
   function stop() {
@@ -47,6 +53,19 @@
       frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
+  }
+
+  function menuKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      menuOpen = false;
+      void tick().then(() => menuButton.focus());
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      const items = [...menuElement.querySelectorAll<HTMLButtonElement>('button')];
+      const index = items.indexOf(document.activeElement as HTMLButtonElement);
+      items[(index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
+    }
   }
 
   $effect(() => {
@@ -75,11 +94,13 @@
   </div>
 
   <nav class="part-dock" aria-label="Part comparison controls">
-    <button aria-label="Previous part" title="Previous part" onclick={onprevious} disabled={partIndex <= 0}>‹</button>
-    <span class="part-title">{selectedPart?.name ?? 'Selected region'}</span>
-    <button aria-label="Next part" title="Next part" onclick={onnext} disabled={partIndex < 0 || partIndex >= parts.length - 1}>›</button>
-    {#if parts.length}<span class="dots">{#each parts as part, index}<span class:active={index === partIndex} title={part.name}></span>{/each}</span>{/if}
-    <span class="divider"></span>
+    {#if parts.length}
+      <button aria-label="Previous part" title="Previous part" onclick={onprevious} disabled={partIndex <= 0}>‹</button>
+      <span class="part-title">{selectedPart?.name ?? 'Selected region'}</span>
+      <button aria-label="Next part" title="Next part" onclick={onnext} disabled={partIndex < 0 || partIndex >= parts.length - 1}>›</button>
+      <span class="dots">{#each parts as part, index}<span class:active={index === partIndex} title={part.name}></span>{/each}</span>
+      <span class="divider"></span>
+    {/if}
     <button aria-label="Side by side" title="Side by side" aria-pressed={mode === 'side-by-side'} onclick={() => mode = 'side-by-side'}>◫</button>
     <button aria-label="Stack vertically" title="Stack vertically" aria-pressed={mode === 'stacked'} onclick={() => mode = 'stacked'}>☷</button>
     <button aria-label="Overlay" title="Overlay" aria-pressed={mode === 'overlay'} onclick={() => mode = 'overlay'}>▣</button>
@@ -91,14 +112,17 @@
     {/if}
   </nav>
   <div class="part-actions">
-    {#if menuOpen}<nav class="action-menu" aria-label="Part actions">
-      {#if onsave}<button onclick={() => { menuOpen = false; onsave?.(); }}>Save part details</button>{/if}
-      <button onclick={onadjust}>Adjust region on whole image</button>
-      <button onclick={onnewregion}>Select a new region</button>
-    </nav>{/if}
-    <button class="fab" aria-label={menuOpen ? 'Close part actions' : 'Open part actions'} aria-expanded={menuOpen} onclick={() => menuOpen = !menuOpen}>{menuOpen ? '×' : '+'}</button>
+    {#if menuOpen}<div class="action-menu" role="menu" aria-label="Part actions" tabindex="-1" bind:this={menuElement} onkeydown={menuKeydown}>
+      {#if onsave}<button role="menuitem" onclick={() => { menuOpen = false; onsave?.(); }}>Save part details</button>{/if}
+      <button role="menuitem" onclick={onadjust}>Adjust region on whole image</button>
+      <button role="menuitem" onclick={onnewregion}>Select a new region</button>
+      <button role="menuitem" onclick={() => { menuOpen = false; onsavecomparison?.(); }}>Save comparison</button>
+    </div>{/if}
+    <button class="fab" bind:this={menuButton} aria-label={menuOpen ? 'Close part actions' : 'Open part actions'} aria-expanded={menuOpen} onclick={() => { menuOpen = !menuOpen; if (menuOpen) void tick().then(() => menuElement.querySelector('button')?.focus()); }}>{menuOpen ? '×' : '+'}</button>
   </div>
 </section>
+
+<svelte:window onpointerdown={(event) => { if (menuOpen && !(event.target as Element).closest('.part-actions')) menuOpen = false; }} />
 
 <style>
   .parts-page { padding-bottom: 8rem; }
@@ -121,10 +145,10 @@
   .overlay figure:first-child canvas { height: min(54vh, 560px); }
   .overlay figure:last-child canvas { height: 100%; }
   .stacked canvas { height: min(38vh, 400px); }
-  .chip { align-items: center; background: #fffd; border-radius: 50%; box-shadow: 0 2px 8px #0002; color: var(--accent); display: flex; height: 2rem; justify-content: center; left: 1rem; position: absolute; top: 1rem; width: 2rem; z-index: 2; }
-  .chip span { background: #1e1f22e8; border-radius: 6px; color: #fff; display: none; font-size: 0.72rem; left: 2.4rem; padding: 0.4rem; position: absolute; white-space: nowrap; }
+  .chip { align-items: center; backdrop-filter: blur(8px); background: var(--surface-frost); border-radius: 50%; color: var(--accent); display: flex; font-size: 0.8rem; height: 24px; justify-content: center; left: 12px; position: absolute; top: 12px; width: 24px; z-index: 2; }
+  .chip span { background: var(--tooltip); border-radius: 6px; color: var(--on-accent); display: none; font-size: 0.72rem; left: 32px; padding: 0.4rem; position: absolute; white-space: nowrap; }
   .chip:hover span, .chip:focus-visible span { display: block; }
-  .part-dock { align-items: center; background: #fff; border: 1px solid var(--border); border-radius: 999px; bottom: max(1.5rem, env(safe-area-inset-bottom)); box-shadow: 0 10px 30px #352b1b20; display: flex; gap: 0.2rem; left: 50%; max-width: calc(100vw - 2rem); overflow-x: auto; padding: 0.35rem; position: fixed; transform: translateX(-50%); white-space: nowrap; z-index: 20; }
+  .part-dock { align-items: center; background: #fff; border: 1px solid var(--border); border-radius: 999px; bottom: calc(24px + env(safe-area-inset-bottom)); box-shadow: var(--shadow); display: flex; gap: 0.2rem; left: 50%; max-width: calc(100vw - 2rem); min-height: 64px; overflow-x: auto; padding: 0.35rem; position: fixed; transform: translateX(-50%); white-space: nowrap; z-index: 20; }
   .part-dock button { border: 0; font-size: 1.45rem; min-width: 2.8rem; }
   .part-dock button[aria-pressed='true'] { background: #eaf0ff; color: var(--accent); }
   .part-title { font-size: 0.78rem; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
@@ -134,23 +158,24 @@
   .divider { background: var(--border); height: 1.8rem; margin: 0 0.4rem; width: 1px; }
   input { accent-color: var(--accent); width: 130px; }
   output { font-size: 0.8rem; padding-right: 0.5rem; }
-  .part-actions { align-items: center; bottom: 5.5rem; display: flex; gap: 0.7rem; position: fixed; right: 1.5rem; z-index: 21; }
-  .fab { background: var(--accent); border: 0; border-radius: 50%; box-shadow: 0 8px 24px #3050d044; color: #fff; font-size: 2rem; height: 3.6rem; width: 3.6rem; }
-  .action-menu { background: #fff; border: 1px solid var(--border); border-radius: 14px; bottom: 4.2rem; box-shadow: 0 12px 35px #352b1b20; display: grid; min-width: 230px; padding: 0.5rem; position: absolute; right: 0; }
+  .part-actions { align-items: center; display: flex; gap: 0.7rem; position: fixed; right: max(24px, calc((100vw - 1500px) / 2)); top: 50%; transform: translateY(-50%); z-index: 21; }
+  .fab { background: var(--accent); border: 0; border-radius: 50%; box-shadow: 0 6px 20px rgba(48,80,208,0.28); color: #fff; font-size: 2rem; height: 56px; width: 56px; }
+  .action-menu { background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); display: grid; min-width: 260px; padding: 0.5rem; position: absolute; right: calc(100% + 12px); top: 50%; transform: translateY(-50%); }
   .action-menu button { border: 0; text-align: left; }
   .action-menu button:hover { background: #eaf0ff; color: var(--accent); }
   @media (min-width: 1100px) { .parts-grid { margin-left: 0; margin-right: 265px; max-width: none; } }
-  @media (max-width: 820px) {
+  @media (max-width: 1099px) { .part-actions { bottom: calc(112px + env(safe-area-inset-bottom)); right: 16px; top: auto; transform: none; } .action-menu { bottom: calc(100% + 12px); right: 0; top: auto; transform: none; } }
+  @media (max-width: 719px) {
     .parts-heading { display: block; }
     .title-card { margin-top: 1rem; }
     .parts-grid { grid-template-columns: 1fr; }
     canvas { height: min(42vh, 450px); }
-    .part-actions { bottom: calc(6.5rem + env(safe-area-inset-bottom)); right: 1rem; }
+    .fab { height: 48px; width: 48px; }
     .part-dock { width: calc(100vw - 1rem); }
     .part-dock button { font-size: 1.15rem; min-width: 2.2rem; padding: 0.35rem; }
     .divider { margin: 0 0.15rem; }
-    .part-title, .dots { display: none; }
     input { width: 55px; }
     output { padding-right: 0.2rem; }
   }
+  @media (max-width: 479px) { .part-title { display: none; } }
 </style>

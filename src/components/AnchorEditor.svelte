@@ -240,17 +240,17 @@
       <p>{anchors.length} anchors · {completeCount} paired · {anchorQuality}</p>
     </div>
     <div class="toolbar-actions">
-      <button class="anchor-btn" class:active={gridVisible} onclick={() => gridVisible = !gridVisible} aria-pressed={gridVisible}>
-        Grid
+      <button class="anchor-btn" class:active={gridVisible} onclick={() => gridVisible = !gridVisible} aria-pressed={gridVisible} aria-label="Grid" title="Grid">
+        <span aria-hidden="true">▦</span><span class="dock-label">Grid</span>
       </button>
-      <button class="anchor-btn" onclick={ontogglelist}>
-        {listExpanded ? 'Hide points' : 'Point list'}
+      <button class="anchor-btn" onclick={ontogglelist} aria-pressed={listExpanded} aria-label="Point list" title="Point list">
+        <span aria-hidden="true">☷</span><span class="dock-label">{listExpanded ? 'Hide points' : 'Point list'}</span>
       </button>
-      <button class="anchor-btn" onclick={onundo} disabled={anchors.length === 0}>
-        Undo
+      <button class="anchor-btn" onclick={onundo} disabled={anchors.length === 0} aria-label="Undo" title="Undo">
+        <span aria-hidden="true">↶</span><span class="dock-label">Undo</span>
       </button>
-      <button class="anchor-btn danger" onclick={onclear} disabled={anchors.length === 0}>
-        Clear All
+      <button class="anchor-btn danger" onclick={onclear} disabled={anchors.length === 0} aria-label="Clear all" title="Clear all">
+        <span aria-hidden="true">⌫</span><span class="dock-label">Clear all</span>
       </button>
       <button class="anchor-btn apply" onclick={onapply} disabled={!canApply}>✓ &nbsp; Apply {completeCount} anchors</button>
     </div>
@@ -815,5 +815,17 @@
     .anchor-workspace { flex-direction: column; }
     .grid-controls { width: min(350px, calc(100vw - 2rem)); }
     .grid-controls input[type="range"], .link-grid { width: 60%; }
+  }
+  .anchor-toolbar { bottom: calc(24px + env(safe-area-inset-bottom)); box-shadow: var(--shadow); min-height: 64px; }
+  .anchor-btn { align-items: center; display: flex; gap: 4px; justify-content: center; min-height: 44px; }
+  .anchor-btn > span:first-child { font-size: 18px; }
+  @media (max-width: 719px) { .anchor-workspace { flex-direction: column; } }
+  @media (max-width: 479px) {
+    .anchor-toolbar { border-radius: 999px; width: calc(100vw - 24px); }
+    .toolbar-actions { flex-wrap: nowrap; gap: 2px; }
+    .anchor-btn { flex: none; min-width: 42px; padding: 4px; }
+    .anchor-btn .dock-label { display: none; }
+    .anchor-btn.apply { font-size: 12px; min-width: 0; padding-inline: 8px; }
+    .placement-guide { font-weight: 500; }
   }
 </style>

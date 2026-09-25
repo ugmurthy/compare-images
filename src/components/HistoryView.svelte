@@ -2,10 +2,11 @@
   import type { HistoryEntry } from '../lib/history';
   import NotePreview from './NotePreview.svelte';
 
-  let { entries, onopen, ondelete }: {
+  let { entries, onopen, ondelete, onstart }: {
     entries: HistoryEntry[];
     onopen: (entry: HistoryEntry, reference: File, source: File) => Promise<void>;
     ondelete: (id: string) => Promise<void>;
+    onstart: () => void;
   } = $props();
   let project = $state('');
   let selectedId = $state('');
@@ -14,6 +15,7 @@
   let opening = $state(false);
   let deletingId: string | null = $state(null);
   let error = $state('');
+  let level: 'projects' | 'entries' | 'detail' = $state('projects');
 
   let projects = $derived([...new Map(entries.map((entry) => [`${entry.projectName}\0${entry.reference.name}`, {
     key: `${entry.projectName}\0${entry.reference.name}`, name: entry.projectName, reference: entry.reference.name
@@ -24,6 +26,7 @@
 
   function chooseEntry(id: string) {
     selectedId = id;
+    level = 'detail';
     referenceFile = null;
     sourceFile = null;
     error = '';
@@ -52,18 +55,19 @@
 </script>
 
 <section class="history" aria-label="History">
-  <aside class="card">
+  {#if !entries.length}<div class="empty"><p>No saved comparisons yet.</p><button onclick={onstart}>Start a comparison</button></div>{:else}
+  <aside class="card" class:mobile-hidden={level !== 'projects'}>
     <h2>Projects</h2>
     {#each projects as item}
       {@const count = entries.filter((entry) => entry.projectName === item.name && entry.reference.name === item.reference).length}
-      <button class:active={activeProject?.key === item.key} onclick={() => { project = item.key; chooseEntry(''); }}>
+      <button class:active={activeProject?.key === item.key} onclick={() => { project = item.key; selectedId = ''; level = 'entries'; }}>
         <strong>▤ &nbsp; {item.name}</strong><small>{count} {count === 1 ? 'entry' : 'entries'}</small>
       </button>
     {/each}
   </aside>
-  <div class="card entries">
+  <div class="card entries" class:mobile-hidden={level !== 'entries'}>
+    <button class="level-back" onclick={() => level = 'projects'}>← Projects</button>
     <h2>Entries</h2>
-    {#if !entries.length}<p>No comparisons saved yet. Align two images and save from the comparison view.</p>{/if}
     {#each projectEntries as entry}
       <div class="entry-row" class:active={selected?.id === entry.id}>
         <button class="entry-select" onclick={() => chooseEntry(entry.id)} disabled={deletingId !== null}>
@@ -80,7 +84,8 @@
   </div>
   {#if selected}
     {#key selected.id}
-    <div class="card reopen">
+    <div class="card reopen" class:mobile-hidden={level !== 'detail'}>
+      <button class="level-back" onclick={() => level = 'entries'}>← Entries</button>
       <h2>{new Date(selected.createdAt).toLocaleString()}</h2>
       <p>{selected.alignment.method === 'auto' ? 'Auto align' : 'Manual anchors'} &nbsp; · &nbsp; {selected.reference.name} → {selected.source.name}</p>
       <NotePreview note={selected.note} />
@@ -96,9 +101,13 @@
     </div>
     {/key}
   {/if}
+  {/if}
 </section>
 
 <style>
+  .empty { grid-column: 1 / -1; padding: 5rem 1.5rem; text-align: center; }
+  .empty button { background: white; border: 1px solid var(--hairline); border-radius: 999px; cursor: pointer; margin-top: 16px; padding: 10px 16px; }
+  .level-back { display: none; }
   .history { background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 24px #352b1b0a; display: grid; grid-template-columns: minmax(170px, 0.9fr) minmax(250px, 1.2fr) minmax(270px, 1.5fr); min-height: 580px; overflow: hidden; }
   .card { background: var(--surface); border-right: 1px solid var(--border); min-width: 0; padding: 1.5rem; }
   .card:last-child { border-right: 0; }
@@ -125,5 +134,10 @@
   .error { color: var(--danger); }
   ul { border-bottom: 1px solid var(--border); list-style: none; padding: 0.5rem 0 1rem; }
   li { padding: 0.5rem 0; }
-  @media (max-width: 820px) { .history { grid-template-columns: 1fr; } .card { border-bottom: 1px solid var(--border); border-right: 0; } }
+  @media (max-width: 899px) {
+    .history { grid-template-columns: 1fr; }
+    .card { border-bottom: 1px solid var(--border); border-right: 0; }
+    .mobile-hidden { display: none; }
+    .level-back { background: transparent; border: 0; color: var(--accent); cursor: pointer; display: block; margin-bottom: 1rem; padding: 0.5rem; }
+  }
 </style>
