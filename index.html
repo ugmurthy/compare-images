@@ -4,28 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Compare Sketch</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:wght@400;500;600&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --bg: #f4f6f8;
+        --bg: #f5f3ee;
         --surface: #ffffff;
-        --border: #d9dee7;
-        --border-strong: #aeb7c5;
-        --control-bg: #eef2f6;
-        --text: #1f2933;
-        --muted: #637083;
-        --accent: #246bfe;
-        --accent-hover: #1d56d8;
-        --accent-soft: rgba(36, 107, 254, 0.16);
+        --border: #e6e1d6;
+        --border-strong: #c9c3b8;
+        --control-bg: #f5f3ee;
+        --text: #1e1f22;
+        --muted: #75726b;
+        --accent: #3050d0;
+        --accent-hover: #243fb0;
+        --accent-soft: rgba(48, 80, 208, 0.12);
         --danger: #c83232;
         --success: #138a45;
       }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        background: var(--bg);
+        background: radial-gradient(circle at 25% 15%, #ffffff 0, transparent 60%), var(--bg);
         color: var(--text);
         min-height: 100vh;
       }
+      h1, h2, h3 { font-family: 'Newsreader', Georgia, serif; font-weight: 500; }
       button,
       input {
         font: inherit;

@@ -9,8 +9,8 @@
     alignResult,
     viewMode,
     overlayOpacity,
-    onrotatesource,
-    sourceRotating = false,
+    referenceName = 'Reference',
+    sourceName = 'Source',
     region = $bindable(null),
     savedRegions = [],
     oncompareparts
@@ -20,8 +20,8 @@
     alignResult: AlignResult | null;
     viewMode: string;
     overlayOpacity: number;
-    onrotatesource?: () => void;
-    sourceRotating?: boolean;
+    referenceName?: string;
+    sourceName?: string;
     region?: Region | null;
     savedRegions?: Region[];
     oncompareparts?: () => void;
@@ -89,21 +89,19 @@
 </script>
 
 <section class="compare-section">
-  {#if alignResult && oncompareparts}
+  {#if alignResult && oncompareparts && viewMode !== 'overlay'}
     <div class="parts-tools">
-      <div>
-        <strong>Compare a detail</strong>
-        <p>{viewMode === 'overlay' ? 'Switch to Side by side to select a rectangle on the reference.' : 'Drag a rectangle on the reference. Keyboard: arrows to move, Enter for each corner, Escape to clear.'}</p>
-        <span role="status">{region ? `Selected: ${region.width} × ${region.height} px at (${region.x}, ${region.y})` : 'No rectangle selected'}</span>
-      </div>
-      <button class="rotate-btn" onclick={() => region = null} disabled={!region}>Clear selection</button>
-      <button class="parts-btn" aria-label="Compare parts" onclick={oncompareparts} disabled={!region}>Compare parts</button>
+      <span role="status">{region ? `Region selected · ${region.width} × ${region.height} px` : 'Drag on the reference to select a part'}</span>
+      {#if region}
+        <button class="rotate-btn" onclick={() => region = null}>Clear selection</button>
+        <button class="parts-btn" aria-label="Compare parts" onclick={oncompareparts}>Compare parts</button>
+      {/if}
     </div>
   {/if}
-  {#if viewMode === 'side-by-side'}
-    <div class="view side-by-side">
+  {#if viewMode === 'side-by-side' || viewMode === 'stacked'}
+    <div class="view side-by-side" class:stacked={viewMode === 'stacked'}>
       <div class="canvas-card">
-        <span class="canvas-label">Reference</span>
+        <button type="button" class="canvas-label" title="Reference · {referenceName}" aria-label="Reference · {referenceName}">ⓘ<span class="identity">{referenceName}</span></button>
         {#if alignResult && oncompareparts}
           <RegionSelector image={refImg} bind:region {savedRegions} />
         {:else}
@@ -111,22 +109,14 @@
         {/if}
       </div>
       <div class="canvas-card">
-        <div class="canvas-label with-action">
-          <span>{alignResult ? 'Aligned Source' : 'Source'}</span>
-          {#if onrotatesource}
-            <button class="rotate-btn" onclick={onrotatesource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise">
-              <span aria-hidden="true">↻</span>
-              {sourceRotating ? 'Rotating…' : 'Rotate 90°'}
-            </button>
-          {/if}
-        </div>
+        <button type="button" class="canvas-label" title="{alignResult ? 'Aligned source' : 'Source'} · {sourceName}" aria-label="{alignResult ? 'Aligned source' : 'Source'} · {sourceName}">ⓘ<span class="identity">{sourceName}</span></button>
         <canvas bind:this={alignedCanvas}></canvas>
       </div>
     </div>
   {:else if viewMode === 'overlay'}
     <div class="view overlay">
       <div class="canvas-card full-width">
-        <span class="canvas-label">Overlay (opacity: {overlayOpacity.toFixed(2)})</span>
+        <button type="button" class="canvas-label" title="Overlay · {referenceName} + {sourceName}" aria-label="Overlay · {referenceName} + {sourceName}">ⓘ<span class="identity">{referenceName} + {sourceName}</span></button>
         <canvas bind:this={overlayCanvas}></canvas>
       </div>
     </div>
@@ -135,8 +125,6 @@
 
 <style>
   .parts-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 0.65rem; margin-bottom: 0.85rem; font-size: 0.78rem; }
-  .parts-tools > div { flex: 1 1 260px; }
-  .parts-tools p { color: var(--muted); margin: 0.25rem 0; font-size: 0.73rem; }
   .parts-tools span { color: var(--accent); font-size: 0.73rem; }
   .parts-tools button { min-height: 44px; }
   .parts-btn { background: var(--accent); border: 1px solid var(--accent); border-radius: 6px; color: #fff; cursor: pointer; font-size: 0.78rem; font-weight: 800; padding: 0.5rem 0.8rem; }
@@ -151,39 +139,26 @@
     gap: 0.9rem;
   }
 
-  .side-by-side {
-    grid-template-columns: 1fr 1fr;
-  }
+  .side-by-side { grid-template-columns: 1fr 1fr; }
+  .side-by-side.stacked { grid-template-columns: 1fr; max-width: 900px; margin: auto; }
 
   .canvas-card {
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 14px;
     overflow: hidden;
     position: relative;
     background: #ffffff;
+    box-shadow: 0 7px 22px #352b1b12;
+    padding: 7px;
   }
 
   .canvas-card.full-width {
     grid-column: 1 / -1;
   }
 
-  .canvas-label {
-    display: block;
-    padding: 0.65rem 0.75rem;
-    font-size: 0.75rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted);
-    border-bottom: 1px solid var(--border);
-    background: #fafafa;
-  }
-
-  .canvas-label.with-action {
-    align-items: center;
-    display: flex;
-    justify-content: space-between;
-  }
+  .canvas-label { align-items: center; background: #fffd; border: 0; border-radius: 50%; box-shadow: 0 2px 8px #0002; color: var(--accent); cursor: help; display: flex; font-size: 1rem; height: 2rem; justify-content: center; left: 1rem; position: absolute; top: 1rem; width: 2rem; z-index: 1; }
+  .identity { background: #1e1f22e8; border-radius: 6px; color: #fff; display: none; font-size: 0.72rem; left: 2.4rem; max-width: min(220px, 60vw); overflow: hidden; padding: 0.4rem; position: absolute; text-overflow: ellipsis; white-space: nowrap; }
+  .canvas-label:hover .identity, .canvas-label:focus-visible .identity { display: block; }
 
   .rotate-btn {
     align-items: center;
@@ -203,20 +178,13 @@
 
   .rotate-btn:hover { border-color: var(--accent); }
   .rotate-btn:disabled { cursor: wait; opacity: 0.55; }
-  .rotate-btn span { font-size: 1rem; line-height: 0.7; }
 
   canvas {
     width: 100%;
-    height: min(72vh, 820px);
+    height: min(58vh, 650px);
     display: block;
-    background:
-      linear-gradient(45deg, #eef0f3 25%, transparent 25%),
-      linear-gradient(-45deg, #eef0f3 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, #eef0f3 75%),
-      linear-gradient(-45deg, transparent 75%, #eef0f3 75%);
-    background-color: #ffffff;
-    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
-    background-size: 20px 20px;
+    background: #f7f6f3;
+    border-radius: 9px;
     object-fit: contain;
   }
 
@@ -224,5 +192,7 @@
     .side-by-side {
       grid-template-columns: 1fr;
     }
+    canvas { height: min(48vh, 500px); }
+    .parts-tools button { display: none; }
   }
 </style>

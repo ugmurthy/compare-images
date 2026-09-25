@@ -13,7 +13,9 @@
     onclear,
     onundo,
     onselect,
-    ontogglelist
+    ontogglelist,
+    onapply,
+    canApply
   }: {
     refImg: HTMLImageElement | null;
     srcImg: HTMLImageElement | null;
@@ -27,6 +29,8 @@
     onundo: () => void;
     onselect: (id: number | null) => void;
     ontogglelist: () => void;
+    onapply: () => void;
+    canApply: boolean;
   } = $props();
 
   let refFrame: HTMLDivElement = $state()!;
@@ -40,8 +44,8 @@
   let lastActiveSide: 'ref' | 'src' = $state('ref');
   let gridVisible = $state(false);
   let gridLinked = $state(true);
-  let gridSpacing = $state(48);
-  let gridOpacity = $state(0.32);
+  let gridSpacing = $state(24);
+  let gridOpacity = $state(0.25);
   let refGridX = $state(0);
   let refGridY = $state(0);
   let srcGridX = $state(0);
@@ -206,6 +210,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
+    if ((event.target as HTMLElement).matches('input, textarea, select')) return;
     if ((event.key === 'Delete' || event.key === 'Backspace') && selectedAnchorId !== null) {
       event.preventDefault();
       onremove(selectedAnchorId);
@@ -247,6 +252,7 @@
       <button class="anchor-btn danger" onclick={onclear} disabled={anchors.length === 0}>
         Clear All
       </button>
+      <button class="anchor-btn apply" onclick={onapply} disabled={!canApply}>✓ &nbsp; Apply {completeCount} anchors</button>
     </div>
   </div>
 
@@ -413,10 +419,7 @@
 </section>
 
 <style>
-  .anchor-editor {
-    display: grid;
-    gap: 1rem;
-  }
+  .anchor-editor { display: grid; gap: 1rem; }
 
   .anchor-toolbar,
   .toolbar-actions,
@@ -793,5 +796,27 @@
       margin-left: 0;
       width: 60%;
     }
+  }
+  .anchor-toolbar { background: #fff; border: 1px solid var(--border); border-radius: 999px; bottom: max(1.5rem, env(safe-area-inset-bottom)); box-shadow: 0 10px 30px #352b1b20; left: 50%; max-width: calc(100vw - 2rem); padding: 0.4rem; position: fixed; transform: translateX(-50%); z-index: 20; }
+  .anchor-toolbar > div:first-child { display: none; }
+  .toolbar-actions { align-items: center; }
+  .anchor-btn { border: 0; border-radius: 999px; font-weight: 500; white-space: nowrap; }
+  .anchor-btn.apply { background: var(--accent); color: #fff; padding-inline: 1.2rem; }
+  .anchor-btn.apply:disabled { background: #aab2c9; }
+  .anchor-btn.active { background: #eaf0ff; }
+  .placement-guide { background: transparent; border: 0; color: var(--muted); padding: 0.2rem; }
+  .anchor-frame { background: #f7f6f3; border: 7px solid #fff; border-radius: 14px; box-shadow: 0 7px 22px #352b1b12; }
+  .image-label { display: none; }
+  .anchor-handle { background: none; height: 2rem; width: 2rem; }
+  .anchor-number { border: 3px solid #fff; font-size: 0.9rem; height: 2rem; min-width: 2rem; right: 0; top: 0; }
+  .anchor-handle.selected .anchor-number { box-shadow: 0 0 0 7px #e6c66b80; }
+  .grid-controls { background: #fff; border-radius: 14px; bottom: 5.8rem; box-shadow: 0 12px 35px #352b1b20; left: 50%; max-width: calc(100vw - 2rem); position: fixed; transform: translateX(-50%); z-index: 21; }
+  @media (max-width: 820px) {
+    .anchor-toolbar { border-radius: 18px; }
+    .toolbar-actions { flex-wrap: wrap; justify-content: center; }
+    .anchor-btn { width: auto; }
+    .anchor-workspace { flex-direction: column; }
+    .grid-controls { width: min(350px, calc(100vw - 2rem)); }
+    .grid-controls input[type="range"], .link-grid { width: 60%; }
   }
 </style>

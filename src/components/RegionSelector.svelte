@@ -103,12 +103,15 @@
   <image href={image.src} width={image.naturalWidth} height={image.naturalHeight} />
   {#each savedRegions as saved, index}
     <g pointer-events="none">
-      <rect x={saved.x} y={saved.y} width={saved.width} height={saved.height} fill="#2563eb15" stroke="#2563eb" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" />
-      <text x={saved.x + 5} y={saved.y + 18} fill="#1d4ed8" font-size="16" font-weight="bold">{index + 1}</text>
+      <rect x={saved.x} y={saved.y} width={saved.width} height={saved.height} fill="#3050d015" stroke="#3050d0" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" />
+      <text x={saved.x + 5} y={saved.y + 18} fill="#3050d0" font-size="16" font-weight="bold">{index + 1}</text>
     </g>
   {/each}
   {#if region}
-    <rect x={region.x} y={region.y} width={region.width} height={region.height} fill="#2563eb22" stroke="#2563eb" stroke-width="2" vector-effect="non-scaling-stroke" />
+    <rect x={region.x} y={region.y} width={region.width} height={region.height} fill="#3050d015" stroke="#3050d0" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" />
+    {#each [[region.x, region.y], [region.x + region.width, region.y], [region.x, region.y + region.height], [region.x + region.width, region.y + region.height]] as corner}
+      <rect x={corner[0] - 5} y={corner[1] - 5} width="10" height="10" fill="#fff" stroke="#3050d0" vector-effect="non-scaling-stroke" pointer-events="none" />
+    {/each}
   {/if}
   {#if keyboard}
     <path d="M {cursor.x - 8} {cursor.y} h 16 M {cursor.x} {cursor.y - 8} v 16" stroke="#e11d48" stroke-width="2" vector-effect="non-scaling-stroke" />
@@ -116,6 +119,7 @@
 </svg>
 
 <style>
-  svg { display: block; width: 100%; height: min(72vh, 820px); background: #f1f3f5; cursor: crosshair; touch-action: none; user-select: none; }
+  svg { display: block; width: 100%; height: min(58vh, 650px); background: #f7f6f3; border-radius: 9px; cursor: crosshair; touch-action: none; user-select: none; }
   svg:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+  @media (max-width: 820px) { svg { height: min(48vh, 500px); } }
 </style>
