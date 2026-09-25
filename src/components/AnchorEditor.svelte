@@ -807,9 +807,6 @@
   .placement-guide { background: transparent; border: 0; color: var(--muted); padding: 0.2rem; }
   .anchor-frame { background: #f7f6f3; border: 7px solid #fff; border-radius: 14px; box-shadow: 0 7px 22px #352b1b12; }
   .image-label { display: none; }
-  .anchor-handle { background: none; height: 2rem; width: 2rem; }
-  .anchor-number { border: 3px solid #fff; font-size: 0.9rem; height: 2rem; min-width: 2rem; right: 0; top: 0; }
-  .anchor-handle.selected .anchor-number { box-shadow: 0 0 0 7px #e6c66b80; }
   .grid-controls { background: #fff; border-radius: 14px; bottom: 5.8rem; box-shadow: 0 12px 35px #352b1b20; left: 50%; max-width: calc(100vw - 2rem); position: fixed; transform: translateX(-50%); z-index: 21; }
   @media (max-width: 820px) {
     .anchor-toolbar { border-radius: 18px; }
