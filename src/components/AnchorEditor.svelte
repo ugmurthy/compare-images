@@ -113,31 +113,34 @@
     if (!frame || !img) return null;
 
     const rect = frame.getBoundingClientRect();
-    const frameRatio = rect.width / rect.height;
+    const border = getComputedStyle(frame);
+    const width = rect.width - parseFloat(border.borderLeftWidth) - parseFloat(border.borderRightWidth);
+    const height = rect.height - parseFloat(border.borderTopWidth) - parseFloat(border.borderBottomWidth);
+    const frameRatio = width / height;
     const imageRatio = img.naturalWidth / img.naturalHeight;
-    let renderedWidth = rect.width;
-    let renderedHeight = rect.height;
+    let renderedWidth = width;
+    let renderedHeight = height;
     let offsetX = 0;
     let offsetY = 0;
 
     if (frameRatio > imageRatio) {
-      renderedWidth = rect.height * imageRatio;
-      offsetX = (rect.width - renderedWidth) / 2;
+      renderedWidth = height * imageRatio;
+      offsetX = (width - renderedWidth) / 2;
     } else {
-      renderedHeight = rect.width / imageRatio;
-      offsetY = (rect.height - renderedHeight) / 2;
+      renderedHeight = width / imageRatio;
+      offsetY = (height - renderedHeight) / 2;
     }
 
-    return { rect, renderedWidth, renderedHeight, offsetX, offsetY, img };
+    return { rect, borderX: frame.clientLeft, borderY: frame.clientTop, renderedWidth, renderedHeight, offsetX, offsetY, img };
   }
 
   function pointFromClient(clientX: number, clientY: number, side: 'ref' | 'src'): Point | null {
     const placement = imagePlacement(side);
     if (!placement) return null;
 
-    const { rect, renderedWidth, renderedHeight, offsetX, offsetY, img } = placement;
-    const x = ((clientX - rect.left - offsetX) / renderedWidth) * img.naturalWidth;
-    const y = ((clientY - rect.top - offsetY) / renderedHeight) * img.naturalHeight;
+    const { rect, borderX, borderY, renderedWidth, renderedHeight, offsetX, offsetY, img } = placement;
+    const x = ((clientX - rect.left - borderX - offsetX) / renderedWidth) * img.naturalWidth;
+    const y = ((clientY - rect.top - borderY - offsetY) / renderedHeight) * img.naturalHeight;
 
     return {
       x: clamp(x, 0, img.naturalWidth),
@@ -775,6 +778,7 @@
     .placement-guide {
       align-items: flex-start;
       flex-wrap: wrap;
+      min-height: 6rem;
     }
 
     .nudge-hint {
