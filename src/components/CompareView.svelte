@@ -161,9 +161,6 @@
   }
 
   @media (max-width: 719px) {
-    .side-by-side {
-      grid-template-columns: 1fr;
-    }
     canvas { height: min(48vh, 500px); }
   }
 </style>

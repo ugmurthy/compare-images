@@ -83,4 +83,7 @@ build or backend service without changing the Svelte components.
 - OpenCV.js is self-hosted but still large (~10MB, cached after first load)
 - OpenCV alignment remains on the main thread with resolution-bounded feature detection
 - Grid detection works best with clear, high-contrast grid lines
-- Browser history is local to this browser/profile; clearing site data removes it, and reopening requires the original images
+- Saved comparisons include both original image files, alignment, notes, and part previews in IndexedDB. Reopen from History without selecting files again; source rotations are reapplied before restoring alignment.
+- Storage is local to this browser/profile and can be evicted or removed by clearing site data. The header shows estimated total site usage against the browser's quota (not an IndexedDB-only limit): green below 60%, amber at 60%, red at 80%. Estimates refresh after saving/deleting and when the window regains focus; some browsers do not provide estimates.
+- History's **Export all data** downloads a versioned JSON file containing base64-encoded original images and all saved metadata. Export does not delete data or automatically import it back into the app.
+- The version-2 database resets old metadata-only history without migration. Saving multiple comparisons currently stores a separate copy of their images in each entry.

@@ -19,7 +19,7 @@
     onsavecomparison?: () => void;
   } = $props();
 
-  let mode = $state<'side-by-side' | 'stacked' | 'overlay'>('overlay');
+  let mode = $state<'side-by-side' | 'stacked' | 'overlay'>('side-by-side');
   let opacity = $state(0.5);
   let playing = $state(false);
   let menuOpen = $state(false);
@@ -32,7 +32,6 @@
   let partIndex = $derived(parts.findIndex((part) => part.id === selectedPart?.id));
 
   onMount(() => {
-    if (window.innerWidth < 720) mode = 'stacked';
     heading.focus();
   });
   onDestroy(stop);
@@ -168,7 +167,6 @@
   @media (max-width: 719px) {
     .parts-heading { display: block; }
     .title-card { margin-top: 1rem; }
-    .parts-grid { grid-template-columns: 1fr; }
     canvas { height: min(42vh, 450px); }
     .fab { height: 48px; width: 48px; }
     .part-dock { width: calc(100vw - 1rem); }

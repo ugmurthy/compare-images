@@ -8,13 +8,14 @@
     restoreAlignment
   } from './lib/opencv';
   import type { AlignResult, CvState } from './lib/opencv';
-  import { deleteHistory, listHistory, saveHistory } from './lib/history';
+  import { deleteHistory, listHistory, saveHistory, thumbnail } from './lib/history';
   import type { HistoryEntry, SavedPart } from './lib/history';
   import { completeAnchors } from './lib/manualAnchors';
   import type { ManualAnchor, Point } from './lib/manualAnchors';
   import AnchorEditor from './components/AnchorEditor.svelte';
   import CompareView from './components/CompareView.svelte';
   import HistoryView from './components/HistoryView.svelte';
+  import StorageStatus from './components/StorageStatus.svelte';
   import NotePreview from './components/NotePreview.svelte';
   import PartsView from './components/PartsView.svelte';
   import type { Region } from './lib/region';
@@ -85,6 +86,8 @@
 
   onDestroy(() => {
     if (overlayAnimationFrame !== null) cancelAnimationFrame(overlayAnimationFrame);
+    if (refUrl) URL.revokeObjectURL(refUrl);
+    if (srcUrl) URL.revokeObjectURL(srcUrl);
     unsubscribeStatus?.();
   });
 
@@ -266,7 +269,7 @@
     stopOverlayAnimation();
     comparisonMode = mode;
     errorMsg = '';
-    if (mode === 'visual') viewMode = 'side-by-side';
+    viewMode = 'side-by-side';
   }
 
   function selectViewMode(mode: string) {
@@ -439,9 +442,9 @@
     const matchingProject = historyEntries.find((entry) => entry.projectName === projectName.trim());
     if (matchingProject && matchingProject.reference.name !== refFile.name) throw new Error('This project uses another reference filename');
     return {
-      id: crypto.randomUUID(), version: 1, projectName: projectName.trim(), createdAt: new Date().toISOString(), note: entryNote,
-      reference: { name: refFile.name, width: refImg.naturalWidth, height: refImg.naturalHeight },
-      source: { name: srcFile.name, width: srcImg.naturalWidth, height: srcImg.naturalHeight, rotations: sourceRotations },
+      id: crypto.randomUUID(), version: 2, projectName: projectName.trim(), createdAt: new Date().toISOString(), note: entryNote,
+      reference: { name: refFile.name, width: refImg.naturalWidth, height: refImg.naturalHeight, file: refFile, thumbnail: thumbnail(refImg) },
+      source: { name: srcFile.name, width: srcImg.naturalWidth, height: srcImg.naturalHeight, rotations: sourceRotations, file: srcFile, thumbnail: thumbnail(srcImg) },
       alignment: { method: activeResult.method, homography: [...activeResult.homography], inlierCount: activeResult.inlierCount },
       parts: []
     };
@@ -467,7 +470,7 @@
     saving = true;
     try {
       const base = currentEntry ? $state.snapshot(currentEntry) : newEntry();
-      const part: SavedPart = { id: crypto.randomUUID(), name: partName.trim(), note: partNote, region: { ...selectedRegion } };
+      const part: SavedPart = { id: crypto.randomUUID(), name: partName.trim(), note: partNote, region: { ...selectedRegion }, thumbnail: thumbnail(refImg!, selectedRegion) };
       const entry = { ...base, parts: [...base.parts, part] };
       await saveHistory(entry);
       historyEntries = [entry, ...historyEntries.filter((item) => item.id !== entry.id)];
@@ -489,9 +492,9 @@
     }
   }
 
-  async function openHistoryEntry(entry: HistoryEntry, referenceFile: File, sourceFile: File) {
-    if (referenceFile.name !== entry.reference.name || sourceFile.name !== entry.source.name) throw new Error('Select files with the names shown in this entry.');
-    if (!referenceFile.type.startsWith('image/') || !sourceFile.type.startsWith('image/')) throw new Error('Select two image files.');
+  async function openHistoryEntry(entry: HistoryEntry) {
+    const referenceFile = entry.reference.file;
+    const sourceFile = entry.source.file;
     const reference = await readImage(referenceFile);
     let source: { url: string; image: HTMLImageElement } | null = null;
     try {
@@ -503,7 +506,7 @@
       }
       if (reference.image.naturalWidth !== entry.reference.width || reference.image.naturalHeight !== entry.reference.height ||
         source.image.naturalWidth !== entry.source.width || source.image.naturalHeight !== entry.source.height) {
-        throw new Error('Image dimensions differ from the saved comparison. Select the original files.');
+        throw new Error('Saved image dimensions differ from the comparison metadata.');
       }
       const result = await restoreAlignment(imageDataFromImg(reference.image), imageDataFromImg(source.image), entry.alignment);
       clearAll();
@@ -545,6 +548,7 @@
   {:else if comparisonMode === 'manual' && manualEditing}<button class="secondary-btn" onclick={() => selectMode('visual')}>← Cancel anchors</button>
   {:else}<span></span>{/if}
   <div class="header-actions">
+    <StorageStatus entries={historyEntries} />
     {#if !historyOpen && !(comparisonMode === 'manual' && manualEditing && refImg && srcImg)}<button class="secondary-btn" onclick={() => { historyOpen = true; actionMenu = false; }}>◷ &nbsp; History</button>{/if}
     <button class="runtime-pill" class:ready={cvState === 'ready'} class:error={cvState === 'error'} onclick={() => { if (cvState === 'error') void loadCv(); }} disabled={cvState !== 'error'} title={cvState === 'error' ? 'Retry OpenCV' : runtimeLabel}>
       <span class="runtime-dot"></span>{runtimeLabel}
@@ -554,7 +558,7 @@
 
 <main>
   {#if historyOpen}
-    <div class="history-intro"><h2>History</h2><p>Saved alignments on this browser. Images stay on your device.</p></div>
+    <div class="history-intro"><h2>History</h2><p>Images and alignments saved in this browser. Open without selecting files again.</p></div>
     <HistoryView entries={historyEntries} onopen={openHistoryEntry} ondelete={removeHistoryEntry} onstart={() => historyOpen = false} />
   {:else if !refImg || !srcImg}
     <section class="upload-section">
@@ -701,7 +705,7 @@
       <form class="save-panel" onsubmit={(event) => { event.preventDefault(); if (savingPart) void savePart(); else void saveComparison(); }}>
         <button type="button" class="dialog-close" aria-label="Close save dialog" onclick={closeSavePanel}>×</button>
         <h2 id="save-heading">{savingPart ? 'Save this part' : 'Save comparison'}</h2>
-        <p>{savingPart ? 'Keep this detail with your saved alignment.' : 'Save this alignment as a new entry. Images remain on your device.'}</p>
+        <p>{savingPart ? 'Keep this detail with your saved alignment.' : 'Save this alignment and both images in this browser.'}</p>
         {#if !savingPart || !currentEntry}
           <label>Project name <input bind:value={projectName} list="matching-projects" required /></label>
           <datalist id="matching-projects">{#each matchingProjects as name}<option value={name}></option>{/each}</datalist>

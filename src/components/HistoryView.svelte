@@ -1,17 +1,16 @@
 <script lang="ts">
-  import type { HistoryEntry } from '../lib/history';
+  import { exportHistory, type HistoryEntry } from '../lib/history';
   import NotePreview from './NotePreview.svelte';
 
   let { entries, onopen, ondelete, onstart }: {
     entries: HistoryEntry[];
-    onopen: (entry: HistoryEntry, reference: File, source: File) => Promise<void>;
+    onopen: (entry: HistoryEntry) => Promise<void>;
     ondelete: (id: string) => Promise<void>;
     onstart: () => void;
   } = $props();
   let project = $state('');
   let selectedId = $state('');
-  let referenceFile: File | null = $state(null);
-  let sourceFile: File | null = $state(null);
+  let exporting = $state(false);
   let opening = $state(false);
   let deletingId: string | null = $state(null);
   let error = $state('');
@@ -27,18 +26,24 @@
   function chooseEntry(id: string) {
     selectedId = id;
     level = 'detail';
-    referenceFile = null;
-    sourceFile = null;
     error = '';
   }
 
   async function open() {
-    if (!selected || !referenceFile || !sourceFile) return;
+    if (!selected || opening) return;
     opening = true;
     error = '';
-    try { await onopen(selected, referenceFile, sourceFile); }
+    try { await onopen(selected); }
     catch (cause) { error = (cause as Error).message; }
     finally { opening = false; }
+  }
+
+  async function download() {
+    exporting = true;
+    error = '';
+    try { await exportHistory(); }
+    catch (cause) { error = `Export failed: ${(cause as Error).message}`; }
+    finally { exporting = false; }
   }
 
   async function remove(entry: HistoryEntry) {
@@ -54,6 +59,11 @@
   }
 </script>
 
+<div class="export-tools">
+  <p>Export includes original images, alignments, notes, and parts. Export before deleting entries to free space.</p>
+  <button onclick={download} disabled={exporting || !entries.length}>{exporting ? 'Exporting…' : 'Export all data'}</button>
+</div>
+{#if error}<p class="error" role="alert">{error}</p>{/if}
 <section class="history" aria-label="History">
   {#if !entries.length}<div class="empty"><p>No saved comparisons yet.</p><button onclick={onstart}>Start a comparison</button></div>{:else}
   <aside class="card" class:mobile-hidden={level !== 'projects'}>
@@ -71,6 +81,7 @@
     {#each projectEntries as entry}
       <div class="entry-row" class:active={selected?.id === entry.id}>
         <button class="entry-select" onclick={() => chooseEntry(entry.id)} disabled={deletingId !== null}>
+          <div class="thumbnails"><img src={entry.reference.thumbnail} alt="Reference preview" /><img src={entry.source.thumbnail} alt="Source preview" /></div>
           <strong>{new Date(entry.createdAt).toLocaleString()}</strong>
           <small>{entry.alignment.method === 'auto' ? 'Auto align' : 'Manual anchors'} &nbsp; · &nbsp; {entry.parts.length} {entry.parts.length === 1 ? 'part' : 'parts'}</small>
           <NotePreview note={entry.note} focusable={false} />
@@ -80,7 +91,6 @@
         </button>
       </div>
     {/each}
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
   </div>
   {#if selected}
     {#key selected.id}
@@ -89,15 +99,13 @@
       <h2>{new Date(selected.createdAt).toLocaleString()}</h2>
       <p>{selected.alignment.method === 'auto' ? 'Auto align' : 'Manual anchors'} &nbsp; · &nbsp; {selected.reference.name} → {selected.source.name}</p>
       <NotePreview note={selected.note} />
+      <div class="thumbnails large"><img src={selected.reference.thumbnail} alt={selected.reference.name} /><img src={selected.source.thumbnail} alt={selected.source.name} /></div>
       {#if selected.parts.length}
         <h3>Saved parts ({selected.parts.length})</h3>
-        <ul>{#each selected.parts as part}<li>{part.name}</li>{/each}</ul>
+        <ul>{#each selected.parts as part}<li><img class="part-thumbnail" src={part.thumbnail} alt={`Reference region: ${part.name}`} />{part.name}</li>{/each}</ul>
       {/if}
-      <h3>Reselect images to open</h3>
-      <p>Images are not stored. Choose the same files to reopen without realigning.</p>
-      <label>Reference · {selected.reference.name}<input type="file" accept="image/*" onchange={(event) => referenceFile = event.currentTarget.files?.[0] ?? null} /></label>
-      <label>Source · {selected.source.name}<input type="file" accept="image/*" onchange={(event) => sourceFile = event.currentTarget.files?.[0] ?? null} /></label>
-      <button class="primary" onclick={open} disabled={!referenceFile || !sourceFile || opening || deletingId !== null}>{opening ? 'Opening…' : 'Open comparison'}</button>
+      <p>Both images are saved. Reopen without realigning.</p>
+      <button class="primary" onclick={open} disabled={opening || deletingId !== null}>{opening ? 'Opening…' : 'Open comparison'}</button>
     </div>
     {/key}
   {/if}
@@ -105,6 +113,12 @@
 </section>
 
 <style>
+  .export-tools { align-items: center; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; }
+  .export-tools button { background: white; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; padding: 0.7rem 1rem; }
+  .thumbnails { display: flex; gap: 0.4rem; margin: 0.5rem 0; }
+  .thumbnails img { background: #f7f6f3; border: 1px solid var(--border); border-radius: 6px; height: 60px; object-fit: contain; width: calc(50% - 0.2rem); }
+  .large img { height: 130px; }
+  .part-thumbnail { border-radius: 6px; height: 48px; object-fit: contain; width: 64px; }
   .empty { grid-column: 1 / -1; padding: 5rem 1.5rem; text-align: center; }
   .empty button { background: white; border: 1px solid var(--hairline); border-radius: 999px; cursor: pointer; margin-top: 16px; padding: 10px 16px; }
   .level-back { display: none; }
@@ -124,8 +138,6 @@
   .entry-select:disabled { cursor: not-allowed; }
   .entry-select :global(.note) { color: var(--muted); font-size: 0.78rem; margin-top: 0.3rem; }
   .reopen :global(.full) { left: auto; right: 0; }
-  label { display: grid; font-size: 0.78rem; font-weight: 750; gap: 0.45rem; margin: 1rem 0; overflow-wrap: anywhere; }
-  input { max-width: 100%; }
   .primary { background: var(--accent); border: 0; border-radius: 999px; color: white; cursor: pointer; font-weight: 600; min-height: 44px; padding: 0.6rem; width: 100%; }
   .primary:disabled { opacity: 0.5; }
   .delete { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--danger); cursor: pointer; display: inline-flex; flex: none; justify-content: center; margin-right: 0.3rem; min-height: 44px; min-width: 44px; }
@@ -133,7 +145,7 @@
   .delete:disabled { cursor: not-allowed; opacity: 0.5; }
   .error { color: var(--danger); }
   ul { border-bottom: 1px solid var(--border); list-style: none; padding: 0.5rem 0 1rem; }
-  li { padding: 0.5rem 0; }
+  li { align-items: center; display: flex; gap: 0.75rem; padding: 0.5rem 0; }
   @media (max-width: 899px) {
     .history { grid-template-columns: 1fr; }
     .card { border-bottom: 1px solid var(--border); border-right: 0; }
