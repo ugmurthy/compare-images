@@ -265,7 +265,7 @@
     <span class="nudge-hint">Drag to refine · Arrow keys nudge</span>
   </div>
 
-  {#if gridVisible}
+  {#if gridVisible && !listExpanded}
     <div class="grid-controls">
       <span class="control-title">Grid</span>
       <label>
@@ -459,7 +459,7 @@
   }
 
   .anchor-btn {
-    background: #ffffff;
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text);
@@ -563,7 +563,7 @@
   }
 
   .link-grid {
-    background: #fff;
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--muted);
@@ -593,7 +593,7 @@
   }
 
   .grid-side button.active {
-    background: #fff;
+    background: var(--surface);
     box-shadow: 0 1px 3px rgba(20, 26, 35, 0.14);
     color: var(--text);
   }
@@ -709,16 +709,24 @@
   }
 
   .anchor-list {
+    background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
     display: grid;
-    max-height: 15rem;
+    bottom: calc(104px + env(safe-area-inset-bottom));
+    left: 50%;
+    position: fixed;
+    transform: translateX(-50%);
+    width: min(600px, calc(100vw - 32px));
+    max-height: min(320px, 45vh);
     overflow: auto;
+    z-index: 21;
   }
 
   .anchor-row {
     align-items: center;
-    background: #ffffff;
+    background: var(--surface);
     border: 0;
     border-bottom: 1px solid var(--border);
     color: var(--muted);
@@ -736,7 +744,7 @@
   }
 
   .anchor-row.selected {
-    background: #f4f8ff;
+    background: var(--accent-tint);
     color: var(--text);
   }
 
@@ -801,17 +809,17 @@
       width: 60%;
     }
   }
-  .anchor-toolbar { background: #fff; border: 1px solid var(--border); border-radius: 999px; bottom: max(1.5rem, env(safe-area-inset-bottom)); box-shadow: 0 10px 30px #352b1b20; left: 50%; max-width: calc(100vw - 2rem); padding: 0.4rem; position: fixed; transform: translateX(-50%); z-index: 20; }
+  .anchor-toolbar { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; bottom: max(1.5rem, env(safe-area-inset-bottom)); box-shadow: var(--shadow); left: 50%; max-width: calc(100vw - 2rem); padding: 0.4rem; position: fixed; transform: translateX(-50%); z-index: 20; }
   .anchor-toolbar > div:first-child { display: none; }
   .toolbar-actions { align-items: center; }
-  .anchor-btn { border: 0; border-radius: 999px; font-weight: 500; white-space: nowrap; }
-  .anchor-btn.apply { background: var(--accent); color: #fff; padding-inline: 1.2rem; }
+  .anchor-btn { border: 0; border-radius: 8px; font-weight: 500; white-space: nowrap; }
+  .anchor-btn.apply { background: var(--accent); color: var(--on-accent); padding-inline: 1.2rem; }
   .anchor-btn.apply:disabled { background: #aab2c9; }
-  .anchor-btn.active { background: #eaf0ff; }
+  .anchor-btn.active { background: var(--accent-tint); }
   .placement-guide { background: transparent; border: 0; color: var(--muted); padding: 0.2rem; }
-  .anchor-frame { background: #f7f6f3; border: 7px solid #fff; border-radius: 14px; box-shadow: 0 7px 22px #352b1b12; }
+  .anchor-frame { background: #f7f6f3; border: 7px solid var(--surface); border-radius: 14px; box-shadow: var(--shadow); }
   .image-label { display: none; }
-  .grid-controls { background: #fff; border-radius: 14px; bottom: 5.8rem; box-shadow: 0 12px 35px #352b1b20; left: 50%; max-width: calc(100vw - 2rem); position: fixed; transform: translateX(-50%); z-index: 21; }
+  .grid-controls { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; bottom: 5.8rem; box-shadow: var(--shadow); left: 50%; max-width: calc(100vw - 2rem); position: fixed; transform: translateX(-50%); z-index: 21; }
   @media (max-width: 820px) {
     .anchor-toolbar { border-radius: 18px; }
     .toolbar-actions { flex-wrap: wrap; justify-content: center; }

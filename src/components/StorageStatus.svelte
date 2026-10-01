@@ -15,17 +15,23 @@
 </script>
 
 <svelte:window onfocus={refresh} />
-<div class="storage" class:warning={level === 'warning'} class:critical={level === 'critical'} aria-live="polite">
+<details class="storage" class:warning={level === 'warning'} class:critical={level === 'critical'}>
+  <summary aria-label={estimate?.quota ? `Browser storage: ${percent}% used` : 'Storage estimate unavailable'} title={estimate?.quota ? `${bytes(estimate.usage ?? 0)} / ${bytes(estimate.quota)} estimated browser quota` : 'Storage estimate unavailable'}>{estimate?.quota ? `${percent}%` : '—'}</summary>
+  <div class="storage-info" role="status">
   {#if estimate?.quota}
     <span>Storage: {percent}% · {level === 'critical' ? 'Critical' : level === 'warning' ? 'Warning' : 'Within limits'}</span>
     <small>{bytes(estimate.usage ?? 0)} / {bytes(estimate.quota)} estimated site quota</small>
     {#if level !== 'ok'}<small>Export history, then delete unneeded entries to free space.</small>{/if}
   {:else}<span>Storage estimate unavailable</span>{/if}
-</div>
+  </div>
+</details>
 
 <style>
-  .storage { background: #e9f8ef; border: 1px solid #bde8cb; border-radius: 10px; color: #126b34; display: grid; font-size: 0.75rem; gap: 0.2rem; padding: 0.5rem 0.75rem; }
-  .warning { background: #fff7db; border-color: #e7c667; color: #795400; }
-  .critical { background: #fff0f0; border-color: #fecaca; color: #a51d28; }
-  small { font-size: 0.68rem; }
+  .storage { position: relative; color: var(--ok); font-size: 0.8rem; z-index: 40; }
+  summary { list-style: none; cursor: pointer; min-width: 44px; min-height: 44px; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+  summary::-webkit-details-marker { display: none; }
+  .warning { color: var(--warning); }
+  .critical { color: var(--danger); }
+  .storage-info { display: grid; gap: 8px; position: fixed; margin-top: 8px; right: 16px; width: 260px; max-width: calc(100vw - 32px); padding: 16px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+  small { font-size: 0.75rem; color: var(--muted); }
 </style>

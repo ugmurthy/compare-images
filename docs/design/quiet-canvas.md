@@ -1,6 +1,40 @@
 # Quiet Canvas — Compare Sketch Style Guide
 
-This guide defines the look, feel, layout, and behavior of every Compare Sketch screen. It applies **Design Direction A** (image-first, controls hidden until requested) across the whole app. It changes presentation only; all existing functionality must remain reachable.
+## Current direction: compact workspace
+
+The updated design retains the warm paper palette and image-first presentation,
+but replaces the floating-action layout described in the historical reference below.
+These current rules take precedence:
+
+- Use **Inter throughout**, including headings and the wordmark. Use 600 for
+  headings, 500 for controls, and 400 for supporting text.
+- Keep image frames centered with equal outer margins. Do not reserve a FAB gutter.
+- Place display modes, alignment, rotation, New part, Compare parts, Save comparison,
+  and More in a compact toolbar above the whole-image workspace. Part views show
+  display modes, opacity/play when relevant, Adjust region, New part, Save part,
+  and More above the images.
+- Keep saved-part navigation in a fixed-width bottom navigator with 44px chevrons,
+  a truncated name, and a tabular count. Changing names or display modes must not
+  move the chevrons. From Whole image, Next opens the first saved part. Do not add
+  popup lists or dropdown menus for part names.
+- Offer Light, Dark, and System themes; remember the choice in this browser and
+  follow system changes when System is selected. Never invert or recolor images.
+- Display storage as a colored percentage, with quota details on hover or click.
+  Display OpenCV as a status dot with an accessible description and retry on error.
+- Use shared theme tokens for all menu, popover, history, and dialog surfaces.
+  Menus have 44px rows, 12px corners, hairline borders, and restrained shadows.
+- Save dialogs use Inter, stacked labelled fields, optional notes, project context
+  when adding a part, and visible Cancel/Save actions. Focus the first input;
+  trap Tab, close on Escape, and restore focus to the opener. On narrow screens,
+  use a bottom sheet with safe-area padding.
+- Preserve Projects → Entries → Details in history; use a drill-down on narrow
+  screens. Both stored images reopen without file re-selection or realignment.
+- Default to stacked images below 720px while retaining all display modes.
+
+## Historical reference: floating controls
+
+The remaining sections record the earlier floating-control design and its mockups.
+They are retained as historical context, not as the current layout or typography contract.
 
 ## 1. Principle
 

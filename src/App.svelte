@@ -16,6 +16,7 @@
   import CompareView from './components/CompareView.svelte';
   import HistoryView from './components/HistoryView.svelte';
   import StorageStatus from './components/StorageStatus.svelte';
+  import ThemeSelect from './components/ThemeSelect.svelte';
   import NotePreview from './components/NotePreview.svelte';
   import PartsView from './components/PartsView.svelte';
   import type { Region } from './lib/region';
@@ -38,7 +39,7 @@
   let selectedManualAnchorId: number | null = $state(null);
   let anchorListExpanded = $state(false);
   let nextManualAnchorId = $state(1);
-  let viewMode = $state('side-by-side');
+  let viewMode = $state(defaultViewMode());
   let selectedRegion: Region | null = $state(null);
   let showingParts = $state(false);
   let overlayOpacity = $state(0.5);
@@ -53,6 +54,8 @@
   let savePanel = $state(false);
   let savingPart = $state(false);
   let actionMenu = $state(false);
+  let menuTop = $state(0);
+  let menuRight = $state(24);
   let actionButton: HTMLButtonElement = $state()!;
   let actionMenuElement: HTMLElement = $state()!;
   let saveDialog: HTMLDivElement = $state()!;
@@ -68,10 +71,14 @@
 
   const OVERLAY_ANIMATION_DURATION = 1600;
 
+  function defaultViewMode() {
+    return window.matchMedia('(max-width: 719px)').matches ? 'stacked' : 'side-by-side';
+  }
+
   let completeManualAnchors = $derived(completeAnchors(manualAnchors));
   let selectedCount = $derived((refImg ? 1 : 0) + (srcImg ? 1 : 0));
   let activeResult = $derived(comparisonMode === 'manual' ? manualResult : comparisonMode === 'auto' ? autoResult : null);
-  let savedParts = $derived(currentEntry && currentEntry.alignment.method === comparisonMode ? currentEntry.parts : []);
+  let savedParts = $derived.by(() => currentEntry && currentEntry.alignment.method === comparisonMode ? currentEntry.parts : []);
   let selectedPartIndex = $derived(savedParts.findIndex((part) => part.id === selectedPartId));
   let selectedPart = $derived(savedParts[selectedPartIndex] ?? null);
   let matchingProjects = $derived([...new Set(historyEntries.filter((entry) => entry.reference.name === refFile?.name).map((entry) => entry.projectName))]);
@@ -257,7 +264,7 @@
     srcImg = null;
     sourceRotations = 0;
     comparisonMode = 'visual';
-    viewMode = 'side-by-side';
+    viewMode = defaultViewMode();
     overlayOpacity = 0.5;
     errorMsg = '';
     statusMsg = cvState === 'ready' ? 'Ready to compare.' : statusMsg;
@@ -269,7 +276,7 @@
     stopOverlayAnimation();
     comparisonMode = mode;
     errorMsg = '';
-    viewMode = 'side-by-side';
+    viewMode = defaultViewMode();
   }
 
   function selectViewMode(mode: string) {
@@ -388,7 +395,7 @@
         if (currentEntry?.alignment.method === method) currentEntry = null;
         if (restoredMethod === method) restoredMethod = null;
       }
-      viewMode = 'side-by-side';
+      viewMode = defaultViewMode();
     } catch (error) {
       errorMsg = `${method === 'manual' ? 'Manual' : 'Automatic'} alignment failed: ${(error as Error).message}`;
     } finally {
@@ -397,7 +404,9 @@
   }
 
   function showSavePanel(part = false) {
-    returnFocus = document.querySelector<HTMLElement>('.fab-area .fab, .part-actions .fab') ?? document.activeElement as HTMLElement;
+    const active = document.activeElement as HTMLElement;
+    returnFocus = active.closest('[role="menu"]')
+      ? document.querySelector<HTMLElement>('button[aria-expanded="true"]') : active;
     actionMenu = false;
     savingPart = part;
     projectName = currentEntry?.projectName ?? refFile?.name.replace(/\.[^.]+$/, '') ?? '';
@@ -405,7 +414,7 @@
     partName = '';
     partNote = '';
     savePanel = true;
-    void tick().then(() => saveDialog?.querySelector<HTMLElement>('input, button')?.focus());
+    void tick().then(() => saveDialog?.querySelector<HTMLElement>('input')?.focus());
   }
 
   function closeSavePanel() {
@@ -426,6 +435,15 @@
   function closeActionMenu() {
     actionMenu = false;
     void tick().then(() => actionButton?.focus());
+  }
+
+  function toggleActionMenu() {
+    actionMenu = !actionMenu;
+    if (!actionMenu) return;
+    const rect = actionButton.getBoundingClientRect();
+    menuTop = rect.bottom + 8;
+    menuRight = Math.max(16, window.innerWidth - rect.right);
+    void tick().then(() => actionMenuElement.querySelector<HTMLElement>('button:not(:disabled)')?.focus());
   }
 
   function menuKeydown(event: KeyboardEvent) {
@@ -522,7 +540,7 @@
       else autoResult = result;
       currentEntry = entry;
       restoredMethod = entry.alignment.method;
-      viewMode = 'side-by-side';
+      viewMode = defaultViewMode();
       historyOpen = false;
       statusMsg = 'Saved alignment restored without realigning.';
     } catch (error) {
@@ -543,15 +561,16 @@
 </script>
 
 <header class="app-header">
+  <h1>Compare Sketch</h1>
   {#if historyOpen}<button class="secondary-btn" onclick={() => historyOpen = false}>← Back to comparison</button>
-  {:else if !refImg || !srcImg}<h1><span aria-hidden="true">✎</span> Compare Sketch</h1>
   {:else if comparisonMode === 'manual' && manualEditing}<button class="secondary-btn" onclick={() => selectMode('visual')}>← Cancel anchors</button>
-  {:else}<span></span>{/if}
+  {/if}
   <div class="header-actions">
     <StorageStatus entries={historyEntries} />
     {#if !historyOpen && !(comparisonMode === 'manual' && manualEditing && refImg && srcImg)}<button class="secondary-btn" onclick={() => { historyOpen = true; actionMenu = false; }}>◷ &nbsp; History</button>{/if}
-    <button class="runtime-pill" class:ready={cvState === 'ready'} class:error={cvState === 'error'} onclick={() => { if (cvState === 'error') void loadCv(); }} disabled={cvState !== 'error'} title={cvState === 'error' ? 'Retry OpenCV' : runtimeLabel}>
-      <span class="runtime-dot"></span>{runtimeLabel}
+    <ThemeSelect />
+    <button class="runtime-pill" class:ready={cvState === 'ready'} class:error={cvState === 'error'} onclick={() => { if (cvState === 'error') void loadCv(); }} aria-label={cvState === 'error' ? 'OpenCV failed. Retry' : runtimeLabel} title={cvState === 'error' ? 'OpenCV failed. Click to retry' : runtimeLabel}>
+      <span class="runtime-dot"></span>
     </button>
   </div>
 </header>
@@ -563,8 +582,8 @@
   {:else if !refImg || !srcImg}
     <section class="upload-section">
       <div class="intro">
-        <h2>Choose two images</h2>
-        <p>Add an original reference and the source you want to inspect.</p>
+        <h2>See what changed.</h2>
+        <p>Compare two sketches, one detail at a time.</p>
       </div>
       <div class="upload-grid">
         <ImageDrop label="Reference" description="Original sketch" previewUrl={refUrl} file={refFile} onselect={(file) => loadSelectedImage(file, 'ref')} />
@@ -574,6 +593,7 @@
         <span>{selectedCount} of 2 selected</span><span aria-hidden="true">│</span>
         <button class="text-btn" onclick={clearAll} disabled={!refFile && !srcFile}>Reset</button>
       </div>
+      <p class="privacy-note">Images stay in this browser.</p>
     </section>
   {:else if showingParts && selectedRegion && activeResult}
     <PartsView reference={refImg} aligned={activeResult.aligned} region={selectedRegion} onback={closeParts}
@@ -593,11 +613,21 @@
       {#if !(comparisonMode === 'manual' && manualEditing)}
       <div class="workspace-header">
         <div class="workspace-actions">
+          <select aria-label="Alignment method" value={comparisonMode} onchange={(event) => {
+            const mode = event.currentTarget.value as ComparisonMode;
+            selectMode(mode);
+            if (mode === 'manual') manualEditing = true;
+            if (mode === 'auto' && !autoResult) void processImages('auto');
+          }} disabled={processingMode !== null}>
+            <option value="visual">Originals</option>
+            <option value="manual">Manual anchors</option>
+            <option value="auto" disabled={cvState !== 'ready'}>Auto align</option>
+          </select>
           {#if !(comparisonMode === 'manual' && manualEditing)}
             <div class="view-toggle" aria-label="Result display">
-              <button class:active={viewMode === 'side-by-side'} aria-pressed={viewMode === 'side-by-side'} aria-label="Side by side" title="Side by side" onclick={() => selectViewMode('side-by-side')}>◫</button>
-              <button class:active={viewMode === 'stacked'} aria-pressed={viewMode === 'stacked'} aria-label="Stack vertically" title="Stack vertically" onclick={() => selectViewMode('stacked')}>☷</button>
-              <button class:active={viewMode === 'overlay'} aria-pressed={viewMode === 'overlay'} aria-label="Overlay" title="Overlay" onclick={() => selectViewMode('overlay')}>▣</button>
+              <button class:active={viewMode === 'side-by-side'} aria-pressed={viewMode === 'side-by-side'} aria-label="Side by side" title="Side by side" onclick={() => selectViewMode('side-by-side')}>Side by side</button>
+              <button class:active={viewMode === 'stacked'} aria-pressed={viewMode === 'stacked'} aria-label="Stack vertically" title="Stack vertically" onclick={() => selectViewMode('stacked')}>Stacked</button>
+              <button class:active={viewMode === 'overlay'} aria-pressed={viewMode === 'overlay'} aria-label="Overlay" title="Overlay" onclick={() => selectViewMode('overlay')}>Overlay</button>
             </div>
             {#if viewMode === 'overlay'}
               <div class="opacity-tools">
@@ -620,8 +650,11 @@
             {/if}
           {/if}
 
-          <button class="secondary-btn" onclick={rotateSource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise" title="Rotate source image 90 degrees clockwise">↻</button>
-          <button class="secondary-btn" onclick={() => { selectViewMode('side-by-side'); void tick().then(() => document.querySelector<HTMLElement>('[aria-label^="Select reference rectangle"]')?.focus()); }} disabled={!activeResult} aria-label="Select region on reference" title="Select region on reference">▧</button>
+          <button class="secondary-btn" onclick={rotateSource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise" title="Rotate source image 90 degrees clockwise">↻ Rotate source</button>
+          <button class="secondary-btn" onclick={() => { selectedRegion = null; selectViewMode(defaultViewMode()); void tick().then(() => document.querySelector<HTMLElement>('[aria-label^="Select reference rectangle"]')?.focus()); }} disabled={!activeResult} aria-label="Select region on reference" title="Select region on reference">＋ New part</button>
+          <button class="secondary-btn" onclick={compareParts} disabled={!selectedRegion || !activeResult}>Compare parts</button>
+          <button class="primary-btn" onclick={() => showSavePanel()} disabled={!activeResult || restoredMethod === comparisonMode}>Save comparison</button>
+          <button class="secondary-btn" bind:this={actionButton} aria-label="More comparison actions" aria-expanded={actionMenu} onclick={toggleActionMenu}>More ···</button>
         </div>
       </div>
       {/if}
@@ -661,6 +694,15 @@
         {/if}
       </div>
 
+      {#if savedParts.length && !(comparisonMode === 'manual' && manualEditing)}
+        <nav class="saved-parts-bar" aria-label="Saved part navigation">
+          <button aria-label="Previous part" disabled>‹</button>
+          <span class="navigator-title">Whole image</span>
+          <span class="navigator-count">{savedParts.length} parts</span>
+          <button aria-label="Next part" title="Open first saved part" onclick={() => openSavedPart(savedParts[0])}>›</button>
+        </nav>
+      {/if}
+
       {#if errorMsg || statusMsg.includes('could not')}
         <div class="status-bar" class:error={!!errorMsg}>
           <span class="status-dot"></span>
@@ -672,15 +714,8 @@
     {#if !(comparisonMode === 'manual' && manualEditing)}
       <div class="fab-area">
         {#if actionMenu}
-          <div class="action-menu" role="menu" aria-label="Comparison actions" tabindex="-1" bind:this={actionMenuElement} onkeydown={menuKeydown}>
-            <button role="menuitem" onclick={() => { actionMenu = false; compareParts(); }} disabled={!selectedRegion || !activeResult} aria-disabled={!selectedRegion || !activeResult}>Compare parts</button>
-            <button role="menuitem" onclick={() => { actionMenu = false; selectViewMode('side-by-side'); void tick().then(() => document.querySelector<HTMLElement>('[aria-label^="Select reference rectangle"]')?.focus()); }} disabled={!activeResult} aria-disabled={!activeResult}>Select region on reference</button>
-            {#if savedParts.length && activeResult}
-              <span>Saved parts ({savedParts.length})</span>
-              {#each savedParts as part}<button role="menuitem" onclick={() => { actionMenu = false; openSavedPart(part); }}>{part.name}</button>{/each}
-            {/if}
+          <div class="action-menu" style:top={`${menuTop}px`} style:right={`${menuRight}px`} style:max-height={`calc(100dvh - ${menuTop + 16}px)`} role="menu" aria-label="Comparison actions" tabindex="-1" bind:this={actionMenuElement} onkeydown={menuKeydown}>
             {#if selectedRegion}<button role="menuitem" onclick={() => { selectedRegion = null; actionMenu = false; }}>Clear region selection</button>{/if}
-            <button role="menuitem" onclick={() => showSavePanel()} disabled={!activeResult || restoredMethod === comparisonMode} aria-disabled={!activeResult || restoredMethod === comparisonMode}>Save comparison</button>
             <span>Alignment</span>
             {#if comparisonMode === 'auto'}<button role="menuitem" onclick={() => { actionMenu = false; void processImages('auto'); }} disabled={cvState !== 'ready' || processingMode !== null}>{processingMode === 'auto' ? 'Aligning…' : 'Run auto align again'}</button>
             {:else}<button role="menuitem" onclick={() => { selectMode('auto'); actionMenu = false; void processImages('auto'); }} disabled={cvState !== 'ready'}>Run auto align</button>{/if}
@@ -691,13 +726,12 @@
             <button role="menuitem" onclick={() => { clearAll(); actionMenu = false; }}>New comparison</button>
           </div>
         {/if}
-        <button class="fab" bind:this={actionButton} aria-label={actionMenu ? 'Close actions' : 'Open actions'} aria-expanded={actionMenu} onclick={() => { actionMenu = !actionMenu; if (actionMenu) void tick().then(() => actionMenuElement.querySelector<HTMLElement>('button:not(:disabled)')?.focus()); }}>{actionMenu ? '×' : '+'}</button>
       </div>
     {/if}
   {/if}
 </main>
 
-<svelte:window onpointerdown={(event) => { if (actionMenu && !(event.target as Element).closest('.fab-area')) actionMenu = false; }} />
+<svelte:window onresize={() => actionMenu = false} onscroll={() => actionMenu = false} onpointerdown={(event) => { if (actionMenu && !(event.target as Element).closest('.fab-area') && event.target !== actionButton) actionMenu = false; }} />
 
 {#if savePanel}
   <div class="modal-scrim" role="presentation">
@@ -706,6 +740,7 @@
         <button type="button" class="dialog-close" aria-label="Close save dialog" onclick={closeSavePanel}>×</button>
         <h2 id="save-heading">{savingPart ? 'Save this part' : 'Save comparison'}</h2>
         <p>{savingPart ? 'Keep this detail with your saved alignment.' : 'Save this alignment and both images in this browser.'}</p>
+        {#if savingPart && currentEntry}<p>Adding to <strong>{currentEntry.projectName}</strong></p>{/if}
         {#if !savingPart || !currentEntry}
           <label>Project name <input bind:value={projectName} list="matching-projects" required /></label>
           <datalist id="matching-projects">{#each matchingProjects as name}<option value={name}></option>{/each}</datalist>
@@ -715,7 +750,7 @@
           <label>Part name <input bind:value={partName} required /></label>
           <label>Part note (optional) <textarea bind:value={partNote}></textarea></label>
         {/if}
-        <div class="save-actions"><button type="button" class="secondary-btn" onclick={closeSavePanel}>Cancel</button><button class="primary-btn" disabled={saving}>{savingPart ? 'Save part' : 'Save entry'}</button></div>
+        <div class="save-actions"><button type="button" class="secondary-btn" onclick={closeSavePanel}>Cancel</button><button class="primary-btn" disabled={saving}>{saving ? 'Saving…' : savingPart ? 'Save part' : 'Save comparison'}</button></div>
         {#if errorMsg}<p class="save-error" role="alert">{errorMsg}</p>{/if}
       </form>
     </div>
@@ -871,7 +906,6 @@
 
   .app-header { background: transparent; border: 0; padding: 1.25rem clamp(1rem, 3vw, 3rem); }
   .app-header h1 { font-size: 1.4rem; letter-spacing: -0.03em; }
-  .app-header h1 span { font-family: sans-serif; margin-right: 0.4rem; }
   .header-actions { margin-left: auto; }
   .runtime-pill, .secondary-btn { background: #fff; border: 1px solid var(--border); border-radius: 999px; box-shadow: 0 2px 12px #352b1b0b; color: var(--text); font-weight: 500; padding: 0.65rem 1rem; }
   .runtime-pill.ready { background: #fff; border-color: var(--border); color: var(--muted); }
@@ -894,7 +928,6 @@
   .workspace-nav > div:first-child p, .workspace-nav :global(.note) { color: var(--muted); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .method-label { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
   .workspace-body { order: 1; padding: 0; }
-  @media (min-width: 1100px) { .workspace-body { margin-right: 265px; } }
   .workspace-header { background: #fff; border: 1px solid var(--border); border-radius: 999px; bottom: max(1.5rem, env(safe-area-inset-bottom)); box-shadow: 0 10px 30px #352b1b20; left: 50%; max-width: calc(100vw - 2rem); order: 2; padding: 0.4rem; position: fixed; transform: translateX(-50%); z-index: 20; }
   .workspace-actions { justify-content: center; flex-wrap: nowrap; }
   .view-toggle { background: transparent; border: 0; gap: 0.25rem; }
@@ -905,8 +938,6 @@
   .play-btn { border-radius: 12px; font-weight: 500; min-height: 3rem; }
   .workspace-actions > .secondary-btn { white-space: nowrap; }
   .status-bar { background: #fff; border: 1px solid var(--border); border-radius: 999px; justify-self: center; margin-bottom: 1rem; order: 0; }
-  .fab-area { align-items: center; bottom: 5.5rem; display: flex; gap: 0.75rem; position: fixed; right: max(1.5rem, calc((100vw - 1500px) / 2)); z-index: 21; }
-  .fab { background: var(--accent); border: 0; border-radius: 50%; box-shadow: 0 8px 24px #3050d044; color: #fff; cursor: pointer; font-size: 2rem; height: 3.6rem; line-height: 1; width: 3.6rem; }
   .action-menu { background: #fff; border: 1px solid var(--border); border-radius: 14px; bottom: 4.2rem; box-shadow: 0 12px 35px #352b1b20; display: grid; min-width: 230px; padding: 0.5rem; position: absolute; right: 0; }
   .action-menu button { background: transparent; border: 0; border-radius: 8px; color: var(--text); cursor: pointer; padding: 0.75rem; text-align: left; }
   .menu-file { border-radius: 8px; color: var(--text); cursor: pointer; padding: 0.75rem; position: relative; }
@@ -926,7 +957,6 @@
     .workspace-header { flex-direction: row; }
     .workspace-actions { justify-content: center; width: auto; }
     .workspace-actions > button { flex: initial; }
-    .fab-area { bottom: calc(6.5rem + env(safe-area-inset-bottom)); right: 1rem; }
   }
   @media (max-width: 540px) {
     .app-header { padding: 1rem; }
@@ -934,7 +964,6 @@
     .runtime-pill { font-size: 0.75rem; }
     .workspace-nav { margin-top: 0.5rem; }
     .workspace-nav h2 { font-size: 1.55rem; }
-    .workspace-body { margin-right: 4.5rem; }
     .method-label { display: none; }
     .workspace-header { width: max-content; }
     .opacity-control span { display: none; }
@@ -944,35 +973,61 @@
     .modal-scrim { align-items: flex-end; padding: 0; }
     .save-dialog { border-radius: 18px 18px 0 0; max-height: calc(100dvh - env(safe-area-inset-top) - 1rem); padding-bottom: env(safe-area-inset-bottom); width: 100%; }
   }
-  .app-header { align-items: flex-start; background: none; border: 0; box-shadow: none; gap: 1rem; min-height: 88px; padding: calc(24px + env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 0 max(24px, env(safe-area-inset-left)); }
-  .app-header h1 { font-size: 20px; font-weight: 500; line-height: 40px; }
-  .app-header .secondary-btn, .runtime-pill { box-shadow: var(--shadow); height: 40px; padding: 0 16px; }
-  .runtime-pill:disabled { cursor: default; }
+  .app-header { align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); gap: 1rem; min-height: 76px; padding: 16px max(24px, env(safe-area-inset-right)) 16px max(24px, env(safe-area-inset-left)); flex-wrap: wrap; }
+  .app-header h1 { font-size: 20px; font-weight: 600; line-height: 28px; }
+  .header-actions { gap: 8px; }
+  main { padding: 24px 24px 120px; }
+  .primary-btn, .secondary-btn, .play-btn { border-radius: 8px; min-height: 44px; font-size: 0.85rem; font-weight: 500; box-shadow: none; }
+  .primary-btn { color: var(--on-accent); }
+  .secondary-btn, .play-btn { background: var(--surface); color: var(--text); }
+  .secondary-btn:disabled { background: var(--surface); }
+  .runtime-pill, .runtime-pill.ready, .runtime-pill.error { background: transparent; border: 0; box-shadow: none; height: 44px; width: 44px; padding: 0; justify-content: center; }
+  .runtime-dot { background: var(--muted); width: 8px; height: 8px; }
   .runtime-pill.ready .runtime-dot { background: var(--ok); }
-  .workspace-nav { box-shadow: var(--shadow); min-height: 88px; }
-  .workspace-nav h2 { font-size: 26px; line-height: 32px; }
-  .workspace-header { min-height: 64px; }
-  .workspace-header { box-shadow: var(--shadow); bottom: calc(24px + env(safe-area-inset-bottom)); }
-  .view-toggle button { background: none; border-radius: 999px; height: 44px; min-width: 44px; }
+  .runtime-pill.error .runtime-dot { background: var(--danger); }
+  .privacy-note { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 24px; }
+  .intro h2 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 600; }
+  .workspace-shell { display: flex; flex-direction: column; background: transparent; border: 0; gap: 16px; }
+  .workspace-nav { background: transparent; box-shadow: none; border: 0; border-radius: 0; margin: 0; max-width: none; min-height: 0; padding: 0; width: 100%; }
+  .workspace-nav h2 { font-size: 22px; line-height: 30px; }
+  .workspace-header { position: static; transform: none; max-width: none; border-radius: 12px; background: var(--surface); box-shadow: none; padding: 8px; order: 0; width: 100%; }
+  .workspace-actions { flex-wrap: wrap; justify-content: flex-start; width: 100%; gap: 8px; }
+  .workspace-actions > .secondary-btn { border: 1px solid var(--border); font-size: 0.85rem; height: 44px; padding: 8px 12px; }
+  .workspace-body { margin: 0; padding: 0; }
+  .saved-parts-bar { align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); box-shadow: var(--shadow); display: grid; grid-template-columns: 44px minmax(0, 1fr) 64px 44px; gap: 4px; left: 50%; width: 360px; max-width: calc(100vw - 32px); min-height: 60px; padding: 6px; position: fixed; transform: translateX(-50%); white-space: nowrap; z-index: 20; }
+  .saved-parts-bar button { border: 0; border-radius: 8px; background: var(--surface); color: var(--text); width: 44px; min-height: 44px; font-size: 1.45rem; cursor: pointer; }
+  .saved-parts-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .navigator-title { font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; }
+  .navigator-count { font-size: 0.8rem; font-variant-numeric: tabular-nums; text-align: center; }
+  .view-toggle { border: 1px solid var(--border); background: var(--control-bg); gap: 0; }
+  .view-toggle button { border-radius: 6px; color: var(--muted); font-size: 0.8rem; height: 44px; min-width: 44px; padding: 8px 12px; }
   .view-toggle button.active { background: var(--accent-tint); color: var(--accent); }
-  .workspace-actions > .secondary-btn { border: 0; box-shadow: none; font-size: 1.5rem; height: 44px; min-width: 44px; padding: 0; }
-  .fab-area { bottom: auto; right: max(24px, calc((100vw - 1500px) / 2)); top: 50%; transform: translateY(-50%); }
-  .fab { box-shadow: 0 6px 20px rgba(48,80,208,0.28); height: 56px; width: 56px; }
-  .action-menu { bottom: auto; box-shadow: var(--shadow); max-height: calc(100dvh - 130px); min-width: 260px; overflow-y: auto; right: calc(100% + 12px); top: 50%; transform: translateY(-50%); }
-  .action-menu button { min-height: 40px; }
-  .action-menu button:first-child:not(:disabled) { background: var(--accent-tint); color: var(--accent); }
+  .opacity-tools { border: 0; padding: 0; }
+  .status-bar { background: var(--surface); border-radius: 8px; }
+  .fab-area { position: relative; bottom: auto; right: auto; display: block; z-index: 30; }
+  .action-menu { position: fixed; right: 24px; top: 150px; bottom: auto; transform: none; background: var(--surface); box-shadow: var(--shadow); max-height: calc(100dvh - 180px); max-width: calc(100vw - 32px); min-width: 260px; overflow-y: auto; }
+  .action-menu button { min-height: 44px; font-size: 0.85rem; }
+  .action-menu button:hover, .action-menu button:focus-visible, .menu-file:hover, .menu-file:focus-within { background: var(--accent-tint); }
+  .menu-file { font-size: 0.85rem; min-height: 44px; }
   .modal-scrim { background: var(--scrim); }
-  .save-dialog { border: 1px solid var(--hairline); border-radius: 14px; box-shadow: var(--shadow); max-width: 480px; }
-  .save-panel input, .save-panel textarea { border-radius: 10px; min-height: 40px; }
-  @media (max-width: 1099px) { .fab-area { bottom: calc(112px + env(safe-area-inset-bottom)); right: 16px; top: auto; transform: none; } .action-menu { bottom: calc(100% + 12px); right: 0; top: auto; transform: none; } }
+  .save-dialog { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); max-width: 480px; }
+  .save-panel h2 { font-size: 1.5rem; }
+  .save-panel input, .save-panel textarea { background: var(--paper); color: var(--text); border-radius: 8px; min-height: 44px; }
+  .dialog-close { min-width: 44px; min-height: 44px; top: 12px; right: 12px; }
   @media (max-width: 719px) {
-    .app-header { padding: calc(16px + env(safe-area-inset-top)) 16px 0; }
-    main { padding-inline: 16px; }
-    .workspace-nav { width: 100%; }
-    .workspace-body { margin-right: 0; }
-    .workspace-header { bottom: calc(24px + env(safe-area-inset-bottom)); }
-    .fab { height: 48px; width: 48px; }
+    .app-header { padding: 12px 16px; gap: 8px; }
+    .header-actions { width: 100%; justify-content: flex-end; }
+    main { padding: 20px 16px 120px; }
+    .workspace-nav { align-items: flex-start; }
+    .workspace-header { width: 100%; }
+    .workspace-actions > button { flex: 1 1 auto; }
+    .view-toggle { width: 100%; order: -1; }
+    .view-toggle button { flex: 1; }
+    .opacity-tools { width: 100%; }
+    .opacity-control span { display: inline; }
+    .action-menu { right: 16px; top: 140px; max-height: calc(100dvh - 160px); }
     .modal-scrim { align-items: flex-end; padding: 0; }
     .save-dialog { border-radius: 14px 14px 0 0; max-width: none; padding-bottom: env(safe-area-inset-bottom); width: 100%; }
+    .save-panel { padding: 24px; }
   }
 </style>

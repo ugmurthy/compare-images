@@ -138,8 +138,8 @@
     border-radius: 14px;
     overflow: hidden;
     position: relative;
-    background: #ffffff;
-    box-shadow: 0 7px 22px #352b1b12;
+    background: var(--surface);
+    box-shadow: var(--shadow);
     padding: 7px;
   }
 

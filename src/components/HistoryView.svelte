@@ -114,34 +114,34 @@
 
 <style>
   .export-tools { align-items: center; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; }
-  .export-tools button { background: white; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; padding: 0.7rem 1rem; }
+  .export-tools button { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; padding: 0.7rem 1rem; min-height: 44px; font-size: 0.85rem; }
   .thumbnails { display: flex; gap: 0.4rem; margin: 0.5rem 0; }
   .thumbnails img { background: #f7f6f3; border: 1px solid var(--border); border-radius: 6px; height: 60px; object-fit: contain; width: calc(50% - 0.2rem); }
   .large img { height: 130px; }
   .part-thumbnail { border-radius: 6px; height: 48px; object-fit: contain; width: 64px; }
   .empty { grid-column: 1 / -1; padding: 5rem 1.5rem; text-align: center; }
-  .empty button { background: white; border: 1px solid var(--hairline); border-radius: 999px; cursor: pointer; margin-top: 16px; padding: 10px 16px; }
-  .level-back { display: none; }
-  .history { background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 24px #352b1b0a; display: grid; grid-template-columns: minmax(170px, 0.9fr) minmax(250px, 1.2fr) minmax(270px, 1.5fr); min-height: 580px; overflow: hidden; }
+  .empty button { background: var(--surface); color: var(--text); border: 1px solid var(--hairline); border-radius: 8px; cursor: pointer; margin-top: 16px; padding: 10px 16px; min-height: 44px; }
+  .card > .level-back { display: none; }
+  .history { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(170px, 0.8fr) minmax(250px, 1.1fr) minmax(270px, 1.7fr); min-height: 580px; overflow: hidden; margin-top: 16px; }
   .card { background: var(--surface); border-right: 1px solid var(--border); min-width: 0; padding: 1.5rem; }
   .card:last-child { border-right: 0; }
-  h2 { font-size: 1.55rem; font-weight: 500; margin: 0 0 0.5rem; }
+  h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1rem; }
   h3 { font-size: 0.95rem; margin: 1.25rem 0 0.35rem; }
-  p, small { color: var(--muted); font-size: 0.78rem; }
-  .card > button:not(.primary) { background: #fff; border: 0; border-radius: 10px; color: var(--text); cursor: pointer; display: block; margin: 0.6rem 0; padding: 0.75rem; text-align: left; width: 100%; }
-  .card > button.active { background: #edf2ff; box-shadow: inset 3px 0 var(--accent); }
+  p, small { color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
+  .card > button:not(.primary, .level-back) { background: var(--surface); border: 0; border-radius: 10px; color: var(--text); cursor: pointer; display: block; margin: 0.6rem 0; padding: 0.75rem; text-align: left; width: 100%; min-height: 44px; }
+  .card > button.active { background: var(--accent-tint); box-shadow: inset 3px 0 var(--accent); }
   .card button strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card button small { display: block; overflow-wrap: anywhere; }
-  .entry-row { align-items: center; background: #fff; border-bottom: 1px solid var(--border); border-radius: 8px; display: flex; margin: 0.2rem 0; min-width: 0; }
-  .entry-row.active { background: #edf2ff; box-shadow: inset 3px 0 var(--accent); }
+  .entry-row { align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); border-radius: 8px; display: flex; margin: 0.2rem 0; min-width: 0; }
+  .entry-row.active { background: var(--accent-tint); box-shadow: inset 3px 0 var(--accent); }
   .entry-select { background: transparent; border: 0; color: var(--text); cursor: pointer; flex: 1; min-width: 0; padding: 0.75rem; text-align: left; }
   .entry-select:disabled { cursor: not-allowed; }
   .entry-select :global(.note) { color: var(--muted); font-size: 0.78rem; margin-top: 0.3rem; }
   .reopen :global(.full) { left: auto; right: 0; }
-  .primary { background: var(--accent); border: 0; border-radius: 999px; color: white; cursor: pointer; font-weight: 600; min-height: 44px; padding: 0.6rem; width: 100%; }
+  .primary { background: var(--accent); border: 0; border-radius: 8px; color: var(--on-accent); cursor: pointer; font-weight: 600; min-height: 44px; padding: 0.6rem; width: 100%; }
   .primary:disabled { opacity: 0.5; }
   .delete { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--danger); cursor: pointer; display: inline-flex; flex: none; justify-content: center; margin-right: 0.3rem; min-height: 44px; min-width: 44px; }
-  .delete:hover { background: #ffe9e9; }
+  .delete:hover { background: var(--accent-tint); }
   .delete:disabled { cursor: not-allowed; opacity: 0.5; }
   .error { color: var(--danger); }
   ul { border-bottom: 1px solid var(--border); list-style: none; padding: 0.5rem 0 1rem; }
@@ -150,6 +150,6 @@
     .history { grid-template-columns: 1fr; }
     .card { border-bottom: 1px solid var(--border); border-right: 0; }
     .mobile-hidden { display: none; }
-    .level-back { background: transparent; border: 0; color: var(--accent); cursor: pointer; display: block; margin-bottom: 1rem; padding: 0.5rem; }
+    .card > .level-back { background: transparent; border: 0; color: var(--accent); cursor: pointer; display: block; margin-bottom: 1rem; padding: 0.5rem; min-height: 44px; }
   }
 </style>

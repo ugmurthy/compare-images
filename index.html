@@ -6,7 +6,7 @@
     <title>Compare Sketch</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <style>
       :root {
         --paper: #f5f3ee;
@@ -27,7 +27,8 @@
         --accent-tint: rgba(48, 80, 208, 0.10);
         --accent-soft: var(--accent-tint);
         --on-accent: #ffffff;
-        --ok: #22a447;
+        --ok: #18783d;
+        --warning: #946800;
         --success: var(--ok);
         --danger: #c8412f;
         --tooltip: var(--ink);
@@ -41,16 +42,42 @@
         color: var(--text);
         min-height: 100vh;
       }
-      h1, h2, h3 { font-family: 'Newsreader', Georgia, serif; font-weight: 500; }
+      h1, h2, h3 { font-family: inherit; font-weight: 600; }
       button,
       input {
         font: inherit;
       }
       :is(button, input, textarea, a, [role="button"]):focus-visible,
-      label:focus-within {
+      .drop-zone:focus-within {
         outline: 2px solid var(--accent);
         outline-offset: 2px;
       }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --paper: #171b20;
+        --surface: #22272e;
+        --surface-frost: rgba(34, 39, 46, 0.9);
+        --hairline: #3a414b;
+        --dash: #505965;
+        --border-strong: #646e7c;
+        --ink: #edf0f5;
+        --ink-muted: #adb6c3;
+        --accent: #9bafff;
+        --accent-hover: #b7c5ff;
+        --accent-tint: rgba(155, 175, 255, 0.14);
+        --on-accent: #171b20;
+        --ok: #6bd299;
+        --warning: #edc369;
+        --danger: #ff988b;
+        --tooltip: #edf0f5;
+        --scrim: rgba(0, 0, 0, 0.65);
+        --shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+      }
+      button, select, textarea { font: inherit; }
+      button, select { touch-action: manipulation; }
+      button:disabled { cursor: not-allowed; }
+      select { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); min-height: 44px; padding: 0.5rem; }
+      :is(select, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     </style>
   </head>
   <body>
