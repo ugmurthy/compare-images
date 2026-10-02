@@ -1,30 +1,24 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import type { Region } from '../lib/region';
   import type { SavedPart } from '../lib/history';
-  import NotePreview from './NotePreview.svelte';
 
-  let { reference, aligned, region, onback, onadjust, onnewregion, parts = [], selectedPart = null, onprevious, onnext, onsave, onsavecomparison }: {
+  let { reference, aligned, region, onback, onnewregion, parts = [], selectedPart = null, onprevious, onnext, onsave }: {
     reference: HTMLImageElement;
     aligned: ImageData;
     region: Region;
     onback: () => void;
-    onadjust: () => void;
     onnewregion: () => void;
     parts?: SavedPart[];
     selectedPart?: SavedPart | null;
     onprevious?: () => void;
     onnext?: () => void;
     onsave?: () => void;
-    onsavecomparison?: () => void;
   } = $props();
 
   let mode = $state<'side-by-side' | 'stacked' | 'overlay'>('side-by-side');
   let opacity = $state(0.5);
   let playing = $state(false);
-  let menuOpen = $state(false);
-  let menuButton: HTMLButtonElement = $state()!;
-  let menuElement: HTMLElement = $state()!;
   let heading: HTMLHeadingElement;
   let referenceCanvas: HTMLCanvasElement;
   let sourceCanvas: HTMLCanvasElement;
@@ -55,19 +49,6 @@
     frame = requestAnimationFrame(animate);
   }
 
-  function menuKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      menuOpen = false;
-      void tick().then(() => menuButton.focus());
-    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-      event.preventDefault();
-      const items = [...menuElement.querySelectorAll<HTMLButtonElement>('button')];
-      const index = items.indexOf(document.activeElement as HTMLButtonElement);
-      items[(index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
-    }
-  }
-
   $effect(() => {
     if (!referenceCanvas || !sourceCanvas) return;
     const { x, y, width, height } = region;
@@ -80,39 +61,49 @@
 
 <section class="parts-page" aria-label="Compare parts">
   <div class="parts-heading">
-    <button class="back" onclick={onback}>← &nbsp; Whole image</button>
-    <div class="title-card">
+    <div class="heading-top">
       <h2 bind:this={heading} tabindex="-1">{selectedPart?.name ?? 'Compare parts'}</h2>
-      {#if selectedPart}<NotePreview note={selectedPart.note} />{/if}
       <span>{selectedPart ? `Part ${partIndex + 1} of ${parts.length}` : 'Selected region'}</span>
     </div>
+    {#if selectedPart?.note}<p class="part-description">{selectedPart.note}</p>{/if}
   </div>
 
   <div class="part-toolbar">
+    <button class="icon-button" aria-label="Back to whole image" title="Whole image" onclick={onback}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h15" /></svg>
+    </button>
     <div class="view-toggle">
-    <button aria-label="Side by side" aria-pressed={mode === 'side-by-side'} onclick={() => { stop(); mode = 'side-by-side'; }}>Side by side</button>
-    <button aria-label="Stack vertically" aria-pressed={mode === 'stacked'} onclick={() => { stop(); mode = 'stacked'; }}>Stacked</button>
-    <button aria-label="Overlay" aria-pressed={mode === 'overlay'} onclick={() => mode = 'overlay'}>Overlay</button>
+      <button class="icon-button" aria-label="Side by side" title="Side by side" aria-pressed={mode === 'side-by-side'} onclick={() => { stop(); mode = 'side-by-side'; }}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="16" rx="1.5" /><rect x="14" y="4" width="7" height="16" rx="1.5" /></svg>
+      </button>
+      <button class="icon-button" aria-label="Stack vertically" title="Stacked" aria-pressed={mode === 'stacked'} onclick={() => { stop(); mode = 'stacked'; }}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="7" rx="1.5" /><rect x="4" y="14" width="16" height="7" rx="1.5" /></svg>
+      </button>
+      <button class="icon-button" aria-label="Overlay" title="Overlay" aria-pressed={mode === 'overlay'} onclick={() => mode = 'overlay'}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="2" /><rect x="9" y="9" width="12" height="12" rx="2" /></svg>
+      </button>
     </div>
     {#if mode === 'overlay'}
       <div class="opacity-tools">
-      <button aria-label={playing ? 'Stop opacity animation' : 'Play opacity animation'} aria-pressed={playing} title={playing ? 'Stop' : 'Play'} onclick={play}>{playing ? '■' : '▷'}</button>
+      <button class="icon-button" aria-label={playing ? 'Stop opacity animation' : 'Play opacity animation'} aria-pressed={playing} title={playing ? 'Stop' : 'Play'} onclick={play}>
+        <svg viewBox="0 0 24 24" aria-hidden="true">{#if playing}<rect x="6" y="6" width="12" height="12" rx="1" />{:else}<path d="m8 5 11 7-11 7Z" />{/if}</svg>
+      </button>
       <input type="range" min="0" max="1" step="0.01" bind:value={opacity} aria-label="Overlay opacity" oninput={stop} />
       <output>{Math.round(opacity * 100)}%</output>
       </div>
     {/if}
-    <button onclick={onadjust}>Adjust region</button>
-    <button onclick={onnewregion}>＋ New part</button>
-    {#if onsave}<button class="primary" onclick={onsave}>Save part</button>{/if}
-  <div class="part-actions">
-    {#if menuOpen}<div class="action-menu" role="menu" aria-label="Part actions" tabindex="-1" bind:this={menuElement} onkeydown={menuKeydown}>
-      {#if onsave}<button role="menuitem" onclick={() => { menuOpen = false; onsave?.(); }}>Save part details</button>{/if}
-      <button role="menuitem" onclick={onadjust}>Adjust region on whole image</button>
-      <button role="menuitem" onclick={onnewregion}>Select a new region</button>
-      <button role="menuitem" onclick={() => { menuOpen = false; onsavecomparison?.(); }}>Save comparison</button>
-    </div>{/if}
-    <button bind:this={menuButton} aria-label="More part actions" aria-expanded={menuOpen} onclick={() => { menuOpen = !menuOpen; if (menuOpen) void tick().then(() => menuElement.querySelector('button')?.focus()); }}>More ···</button>
-  </div>
+    <div class="part-actions">
+      <button class="icon-button" aria-label="New part" title="New part — select a new region" onclick={onnewregion}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+      </button>
+      {#if onsave}
+        <span title={selectedPart ? 'Already saved — Save part is unavailable for saved parts' : 'Save part'}>
+          <button class="icon-button primary" aria-label="Save part" disabled={selectedPart !== null} onclick={onsave}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z" /><path d="M7 3v6h9V3M7 21v-8h10v8" /></svg>
+          </button>
+        </span>
+      {/if}
+    </div>
   </div>
   <div class="parts-grid" class:stacked={mode === 'stacked'} class:overlay={mode === 'overlay'}>
     <figure><button type="button" class="chip" title="Reference region" aria-label="Reference region">ⓘ</button><canvas bind:this={referenceCanvas} aria-label="Selected reference region"></canvas></figure>
@@ -128,24 +119,23 @@
   {/if}
 </section>
 
-<svelte:window onpointerdown={(event) => { if (menuOpen && !(event.target as Element).closest('.part-actions')) menuOpen = false; }} />
-
 <style>
   .parts-page { padding-bottom: 8rem; }
-  .parts-heading { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
-  .back { align-self: start; }
-  .title-card { min-width: 0; flex: 1; }
-  .title-card h2 { font-size: 22px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
-  .title-card > span { color: var(--muted); font-size: 0.8rem; }
-  .title-card :global(.note) { color: var(--muted); font-size: 0.85rem; max-width: 80%; }
+  .parts-heading { margin-bottom: 22px; }
+  .heading-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  .heading-top h2 { min-width: 0; font-size: 22px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+  .heading-top > span { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
+  .part-description { color: var(--muted); font-size: 0.85rem; line-height: 1.65; margin: 8px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
   button { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer; min-height: 44px; padding: 0.5rem 0.75rem; font-size: 0.85rem; }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .back { white-space: nowrap; }
+  .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; flex-shrink: 0; }
+  svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
   .part-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 16px; }
   .view-toggle { display: flex; border: 1px solid var(--border); border-radius: 8px; background: var(--control-bg); padding: 2px; }
   .view-toggle button { border: 0; background: transparent; }
   .view-toggle button[aria-pressed='true'] { background: var(--accent-tint); color: var(--accent); }
   .primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .primary:disabled { background: var(--control-bg); color: var(--muted); border-color: var(--border); }
   .opacity-tools { display: flex; align-items: center; gap: 8px; }
   .parts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin: auto; max-width: 1250px; }
   .parts-grid.stacked { grid-template-columns: 1fr; max-width: 850px; }
@@ -163,20 +153,13 @@
   .part-title { font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; }
   .part-count { font-size: 0.8rem; font-variant-numeric: tabular-nums; text-align: center; }
   input { accent-color: var(--accent); width: 130px; }
-  output { font-size: 0.8rem; padding-right: 0.5rem; }
-  .part-actions { position: relative; z-index: 21; }
-  .action-menu { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); display: grid; width: 260px; max-width: calc(100vw - 32px); padding: 8px; position: absolute; right: 0; top: calc(100% + 8px); }
-  .action-menu button { border: 0; text-align: left; }
-  .action-menu button:hover, .action-menu button:focus-visible { background: var(--accent-tint); color: var(--accent); }
+  output { font-size: 0.8rem; width: 42px; font-variant-numeric: tabular-nums; }
+  .part-actions { display: flex; gap: 8px; margin-left: auto; }
   @media (max-width: 719px) {
-    .parts-heading { display: block; }
-    .title-card { margin-top: 1rem; }
     canvas { height: min(42vh, 450px); }
-    .view-toggle { width: 100%; }
-    .view-toggle button { flex: 1; }
-    .part-toolbar > button, .part-actions { flex: 1; }
-    .part-actions > button { width: 100%; }
-    input { width: 100px; }
-    output { padding-right: 0.2rem; }
+    .part-toolbar { gap: 6px; }
+    .part-actions { gap: 4px; }
+    .opacity-tools { order: 3; width: 100%; padding-top: 8px; border-top: 1px solid var(--border); }
+    input { flex: 1; min-width: 0; width: 100px; }
   }
 </style>

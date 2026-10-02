@@ -598,7 +598,7 @@
   {:else if showingParts && selectedRegion && activeResult}
     <PartsView reference={refImg} aligned={activeResult.aligned} region={selectedRegion} onback={closeParts}
       parts={savedParts} selectedPart={selectedPart} onprevious={() => adjacentPart(-1)} onnext={() => adjacentPart(1)}
-      onsave={() => showSavePanel(true)} onsavecomparison={() => showSavePanel()} onadjust={closeParts} onnewregion={() => { selectedRegion = null; void closeParts(); }} />
+      onsave={() => showSavePanel(true)} onnewregion={() => { selectedRegion = null; void closeParts(); }} />
   {:else}
     <section class="workspace-shell">
       <div class="workspace-nav">
