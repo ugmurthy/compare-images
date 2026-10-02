@@ -98,7 +98,7 @@
   {#if viewMode === 'side-by-side' || viewMode === 'stacked'}
     <div class="view side-by-side" class:stacked={viewMode === 'stacked'}>
       <div class="canvas-card">
-        <button type="button" class="canvas-label" title="Reference · {referenceName}" aria-label="Reference · {referenceName}">ⓘ<span class="identity">{referenceName}</span></button>
+        <button type="button" class="canvas-label" title="Reference: {referenceName}" aria-label="Reference · {referenceName}">ⓘ</button>
         {#if alignResult && oncompareparts}
           <RegionSelector image={refImg} bind:region {savedRegions} />
         {:else}
@@ -106,14 +106,14 @@
         {/if}
       </div>
       <div class="canvas-card">
-        <button type="button" class="canvas-label" title="{sourceName} · rotated {sourceRotations * 90}°" aria-label="Source · {sourceName} · rotated {sourceRotations * 90}°">ⓘ<span class="identity">{sourceName} · rotated {sourceRotations * 90}°</span></button>
+        <button type="button" class="canvas-label" title="Source: {sourceName} · rotated {sourceRotations * 90}°" aria-label="Source · {sourceName} · rotated {sourceRotations * 90}°">ⓘ</button>
         <canvas bind:this={alignedCanvas}></canvas>
       </div>
     </div>
   {:else if viewMode === 'overlay'}
     <div class="view overlay">
       <div class="canvas-card full-width">
-        <button type="button" class="canvas-label" title="Overlay · {referenceName} + {sourceName}" aria-label="Overlay · {referenceName} + {sourceName}">ⓘ<span class="identity">{referenceName} + {sourceName}</span></button>
+        <button type="button" class="canvas-label" title={`Reference: ${referenceName}\nSource: ${sourceName}`} aria-label="Overlay · {referenceName} + {sourceName}">ⓘ</button>
         <canvas bind:this={overlayCanvas}></canvas>
       </div>
     </div>
@@ -148,8 +148,6 @@
   }
 
   .canvas-label { align-items: center; backdrop-filter: blur(8px); background: var(--surface-frost); border: 0; border-radius: 50%; color: var(--accent); cursor: help; display: flex; font-size: 0.8rem; height: 24px; justify-content: center; left: 12px; position: absolute; top: 12px; width: 24px; z-index: 1; }
-  .identity { background: var(--tooltip); border-radius: 6px; color: var(--on-accent); display: none; font-size: 0.72rem; left: 32px; max-width: min(220px, 60vw); overflow: hidden; padding: 0.4rem; position: absolute; text-overflow: ellipsis; white-space: nowrap; }
-  .canvas-label:hover .identity, .canvas-label:focus-visible .identity { display: block; }
 
   canvas {
     width: 100%;

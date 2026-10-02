@@ -29,11 +29,11 @@
     error = '';
   }
 
-  async function open() {
-    if (!selected || opening) return;
+  async function open(entry = selected) {
+    if (!entry || opening || deletingId !== null) return;
     opening = true;
     error = '';
-    try { await onopen(selected); }
+    try { await onopen(entry); }
     catch (cause) { error = (cause as Error).message; }
     finally { opening = false; }
   }
@@ -80,12 +80,16 @@
     <h2>Entries</h2>
     {#each projectEntries as entry}
       <div class="entry-row" class:active={selected?.id === entry.id}>
-        <button class="entry-select" onclick={() => chooseEntry(entry.id)} disabled={deletingId !== null}>
-          <div class="thumbnails"><img src={entry.reference.thumbnail} alt="Reference preview" /><img src={entry.source.thumbnail} alt="Source preview" /></div>
-          <strong>{new Date(entry.createdAt).toLocaleString()}</strong>
-          <small>{entry.alignment.method === 'auto' ? 'Auto align' : 'Manual anchors'} &nbsp; · &nbsp; {entry.parts.length} {entry.parts.length === 1 ? 'part' : 'parts'}</small>
-          <NotePreview note={entry.note} focusable={false} />
-        </button>
+        <div class="entry-content">
+          <button class="image-open entry-preview" onclick={() => open(entry)} disabled={opening || deletingId !== null} aria-label={`Open comparison from ${new Date(entry.createdAt).toLocaleString()}`}>
+            <span class="thumbnails"><img src={entry.reference.thumbnail} alt="Reference preview" /><img src={entry.source.thumbnail} alt="Source preview" /></span>
+          </button>
+          <button class="entry-select" onclick={() => chooseEntry(entry.id)} disabled={deletingId !== null} title={entry.note}>
+            <strong>{new Date(entry.createdAt).toLocaleString()}</strong>
+            <small>{entry.alignment.method === 'auto' ? 'Auto align' : 'Manual anchors'} &nbsp; · &nbsp; {entry.parts.length} {entry.parts.length === 1 ? 'part' : 'parts'}</small>
+            <NotePreview note={entry.note} focusable={false} />
+          </button>
+        </div>
         <button class="delete" onclick={() => remove(entry)} disabled={opening || deletingId !== null} aria-label={`Delete entry from ${new Date(entry.createdAt).toLocaleString()}`} title="Delete entry">
           <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 3h4l1 4H9l1-4ZM6 7l1 14h10l1-14M10 11v6m4-6v6" /></svg>
         </button>
@@ -99,13 +103,15 @@
       <h2>{new Date(selected.createdAt).toLocaleString()}</h2>
       <p>{selected.alignment.method === 'auto' ? 'Auto align' : 'Manual anchors'} &nbsp; · &nbsp; {selected.reference.name} → {selected.source.name}</p>
       <NotePreview note={selected.note} />
-      <div class="thumbnails large"><img src={selected.reference.thumbnail} alt={selected.reference.name} /><img src={selected.source.thumbnail} alt={selected.source.name} /></div>
+      <button class="image-open" onclick={() => open()} disabled={opening || deletingId !== null} aria-label="Open comparison from image previews">
+        <span class="thumbnails large"><img src={selected.reference.thumbnail} alt={selected.reference.name} /><img src={selected.source.thumbnail} alt={selected.source.name} /></span>
+      </button>
       {#if selected.parts.length}
         <h3>Saved parts ({selected.parts.length})</h3>
-        <ul>{#each selected.parts as part}<li><img class="part-thumbnail" src={part.thumbnail} alt={`Reference region: ${part.name}`} />{part.name}</li>{/each}</ul>
+        <ul>{#each selected.parts as part}<li><button class="part-open" onclick={() => open()} disabled={opening || deletingId !== null} title={`${part.name}${part.note ? `\n${part.note}` : ''}\nOpen comparison`}><img class="part-thumbnail" src={part.thumbnail} alt={`Reference region: ${part.name}`} /><span>{part.name}</span></button></li>{/each}</ul>
       {/if}
       <p>Both images are saved. Reopen without realigning.</p>
-      <button class="primary" onclick={open} disabled={opening || deletingId !== null}>{opening ? 'Opening…' : 'Open comparison'}</button>
+      <button class="primary" onclick={() => open()} disabled={opening || deletingId !== null}>{opening ? 'Opening…' : 'Open comparison'}</button>
     </div>
     {/key}
   {/if}
@@ -128,16 +134,22 @@
   h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1rem; }
   h3 { font-size: 0.95rem; margin: 1.25rem 0 0.35rem; }
   p, small { color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
-  .card > button:not(.primary, .level-back) { background: var(--surface); border: 0; border-radius: 10px; color: var(--text); cursor: pointer; display: block; margin: 0.6rem 0; padding: 0.75rem; text-align: left; width: 100%; min-height: 44px; }
+  .card > button:not(.primary, .level-back, .image-open) { background: var(--surface); border: 0; border-radius: 10px; color: var(--text); cursor: pointer; display: block; margin: 0.6rem 0; padding: 0.75rem; text-align: left; width: 100%; min-height: 44px; }
   .card > button.active { background: var(--accent-tint); box-shadow: inset 3px 0 var(--accent); }
   .card button strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card button small { display: block; overflow-wrap: anywhere; }
   .entry-row { align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); border-radius: 8px; display: flex; margin: 0.2rem 0; min-width: 0; }
   .entry-row.active { background: var(--accent-tint); box-shadow: inset 3px 0 var(--accent); }
+  .entry-content { flex: 1; min-width: 0; }
+  .image-open.entry-preview { padding: 0.75rem 0.75rem 0; box-sizing: border-box; }
   .entry-select { background: transparent; border: 0; color: var(--text); cursor: pointer; flex: 1; min-width: 0; padding: 0.75rem; text-align: left; }
   .entry-select:disabled { cursor: not-allowed; }
   .entry-select :global(.note) { color: var(--muted); font-size: 0.78rem; margin-top: 0.3rem; }
-  .reopen :global(.full) { left: auto; right: 0; }
+  .image-open, .part-open { background: transparent; border: 0; color: var(--text); cursor: pointer; padding: 0; text-align: left; width: 100%; }
+  .part-open { align-items: center; border-radius: 8px; display: flex; gap: 0.75rem; padding: 0.5rem; }
+  .part-open span { overflow-wrap: anywhere; min-width: 0; }
+  .part-open:hover { background: var(--accent-tint); }
+  .image-open:disabled, .part-open:disabled { cursor: not-allowed; opacity: 0.5; }
   .primary { background: var(--accent); border: 0; border-radius: 8px; color: var(--on-accent); cursor: pointer; font-weight: 600; min-height: 44px; padding: 0.6rem; width: 100%; }
   .primary:disabled { opacity: 0.5; }
   .delete { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--danger); cursor: pointer; display: inline-flex; flex: none; justify-content: center; margin-right: 0.3rem; min-height: 44px; min-width: 44px; }
@@ -145,7 +157,7 @@
   .delete:disabled { cursor: not-allowed; opacity: 0.5; }
   .error { color: var(--danger); }
   ul { border-bottom: 1px solid var(--border); list-style: none; padding: 0.5rem 0 1rem; }
-  li { align-items: center; display: flex; gap: 0.75rem; padding: 0.5rem 0; }
+  li { padding: 0.25rem 0; }
   @media (max-width: 899px) {
     .history { grid-template-columns: 1fr; }
     .card { border-bottom: 1px solid var(--border); border-right: 0; }

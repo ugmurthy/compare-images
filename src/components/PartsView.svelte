@@ -115,8 +115,8 @@
   </div>
   </div>
   <div class="parts-grid" class:stacked={mode === 'stacked'} class:overlay={mode === 'overlay'}>
-    <figure><button type="button" class="chip" title="Reference region" aria-label="Reference region">ⓘ<span>Reference</span></button><canvas bind:this={referenceCanvas} aria-label="Selected reference region"></canvas></figure>
-    <figure style:--opacity={opacity}><button type="button" class="chip" title="Aligned source region" aria-label="Aligned source region">ⓘ<span>Aligned source</span></button><canvas bind:this={sourceCanvas} aria-label="Corresponding aligned source region"></canvas></figure>
+    <figure><button type="button" class="chip" title="Reference region" aria-label="Reference region">ⓘ</button><canvas bind:this={referenceCanvas} aria-label="Selected reference region"></canvas></figure>
+    <figure style:--opacity={opacity}><button type="button" class="chip" title="Aligned source region" aria-label="Aligned source region">ⓘ</button><canvas bind:this={sourceCanvas} aria-label="Corresponding aligned source region"></canvas></figure>
   </div>
   {#if parts.length}
     <nav class="part-dock" aria-label="Saved part navigation">
@@ -158,8 +158,6 @@
   .overlay figure:last-child canvas { height: 100%; }
   .stacked canvas { height: min(38vh, 400px); }
   .chip { align-items: center; backdrop-filter: blur(8px); background: var(--surface-frost); border-radius: 50%; color: var(--accent); display: flex; font-size: 0.8rem; height: 24px; justify-content: center; left: 12px; position: absolute; top: 12px; width: 24px; z-index: 2; }
-  .chip span { background: var(--tooltip); border-radius: 6px; color: var(--on-accent); display: none; font-size: 0.72rem; left: 32px; padding: 0.4rem; position: absolute; white-space: nowrap; }
-  .chip:hover span, .chip:focus-visible span { display: block; }
   .part-dock { align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); box-shadow: var(--shadow); display: grid; grid-template-columns: 44px minmax(0, 1fr) 64px 44px; gap: 4px; left: 50%; width: 360px; max-width: calc(100vw - 32px); min-height: 60px; padding: 6px; position: fixed; transform: translateX(-50%); white-space: nowrap; z-index: 20; }
   .part-dock button { border: 0; font-size: 1.45rem; width: 44px; }
   .part-title { font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; }

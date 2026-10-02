@@ -60,7 +60,7 @@
         tabindex={value === mode.id ? 0 : -1}
         onclick={() => onchange(mode.id)}
         onkeydown={(event) => handleKeydown(event, index)}
-        aria-describedby="mode-tooltip-{mode.id}"
+        title={mode.tooltip}
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
           {#if mode.icon === 'columns'}
@@ -77,7 +77,6 @@
         </svg>
         <span>{mode.label}</span>
       </button>
-      <span class="tooltip" id="mode-tooltip-{mode.id}" role="tooltip">{mode.tooltip}</span>
     </span>
   {/each}
 </div>
@@ -135,35 +134,6 @@
     width: 1.15rem;
   }
 
-  .tooltip {
-    background: #18202b;
-    border-radius: 6px;
-    color: #fff;
-    font-size: 0.74rem;
-    font-weight: 600;
-    left: 50%;
-    line-height: 1.4;
-    max-width: 270px;
-    opacity: 0;
-    padding: 0.5rem 0.65rem;
-    pointer-events: none;
-    position: absolute;
-    top: calc(100% + 0.5rem);
-    transform: translate(-50%, -4px);
-    transition: opacity 0.12s, transform 0.12s;
-    visibility: hidden;
-    width: max-content;
-    z-index: 20;
-  }
-
-  .mode-item:hover .tooltip,
-  button:focus-visible + .tooltip {
-    opacity: 1;
-    transform: translate(-50%, 0);
-    transition-delay: 350ms;
-    visibility: visible;
-  }
-
   @media (max-width: 620px) {
     button {
       gap: 0.35rem;
@@ -174,8 +144,5 @@
       font-size: 0.72rem;
     }
 
-    .tooltip {
-      display: none;
-    }
   }
 </style>
