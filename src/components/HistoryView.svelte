@@ -14,6 +14,9 @@
   let selectedId = $state('');
   let opening = $state(false);
   let deletingId: string | null = $state(null);
+  let downloading = $state(false);
+  let downloadStatus = $state('');
+  let busy = $derived(opening || deletingId !== null || downloading);
   let error = $state('');
   let level: 'projects' | 'entries' | 'detail' = $state('projects');
 
@@ -31,7 +34,7 @@
   }
 
   async function open(entry = selected, create = false) {
-    if (!entry || opening || deletingId !== null) return;
+    if (!entry || busy) return;
     opening = true;
     error = '';
     try { await (create ? oncreate(entry) : onopen(entry)); }
@@ -40,6 +43,7 @@
   }
 
   async function remove(entry: HistoryEntry) {
+    if (busy) return;
     if (!window.confirm(`Delete this comparison from ${entry.projectName}, including its ${entry.parts.length} saved parts? This cannot be undone.`)) return;
     const wasSelected = selected?.id === entry.id;
     deletingId = entry.id;
@@ -50,40 +54,62 @@
     } catch (cause) { error = (cause as Error).message; }
     finally { deletingId = null; }
   }
+
+  async function downloadSources() {
+    if (busy || !projectEntries.length) return;
+    const selectedEntries = [...projectEntries];
+    downloading = true;
+    error = '';
+    downloadStatus = 'Preparing aligned sources…';
+    try {
+      const { downloadAlignedSources } = await import('../lib/alignedExport');
+      downloadStatus = await downloadAlignedSources(selectedEntries, (message) => downloadStatus = message);
+    } catch (cause) {
+      downloadStatus = '';
+      error = (cause as Error).message;
+    } finally { downloading = false; }
+  }
 </script>
 
 {#if error}<p class="error" role="alert">{error}</p>{/if}
+{#if downloadStatus}<p class="download-status" role="status">{downloadStatus}</p>{/if}
 <section class="history" aria-label="History">
   {#if !entries.length}<div class="empty"><p>No saved comparisons yet.</p><button onclick={onstart}>Start a comparison</button></div>{:else}
   <aside class="card" class:mobile-hidden={level !== 'projects'}>
     <h2>Projects</h2>
     {#each projects as item}
       {@const count = entries.filter((entry) => entry.projectName === item.name && entry.reference.name === item.reference).length}
-      <button class:active={activeProject?.key === item.key} onclick={() => { project = item.key; selectedId = ''; level = 'entries'; }}>
+      <button class:active={activeProject?.key === item.key} disabled={downloading} onclick={() => { project = item.key; selectedId = ''; level = 'entries'; downloadStatus = ''; error = ''; }}>
         <strong>▤ &nbsp; {item.name}</strong><small>{count} {count === 1 ? 'entry' : 'entries'}</small>
       </button>
     {/each}
   </aside>
   <div class="card entries" class:mobile-hidden={level !== 'entries'}>
     <button class="level-back" onclick={() => level = 'projects'}>← Projects</button>
-    <h2>Entries</h2>
-    <button class="new-entry" onclick={() => open(projectEntries[0], true)} disabled={opening || deletingId !== null}
+    <div class="entries-heading">
+      <h2>Entries</h2>
+      <button class="download-sources" onclick={downloadSources} disabled={busy}
+        aria-label={`Download aligned sources for ${activeProject?.name}`} title="Download aligned sources — newest capture first, up to 99 PNGs in a ZIP">
+        <Icon name="export" />
+      </button>
+    </div>
+    <button class="new-entry" onclick={() => open(projectEntries[0], true)} disabled={busy}
       aria-label={`New comparison in ${activeProject?.name} using existing reference`} title="New comparison using existing reference">
       <Icon name="plus" />
     </button>
     {#each projectEntries as entry}
       <div class="entry-row" class:active={selected?.id === entry.id}>
         <div class="entry-content">
-          <button class="image-open entry-preview" onclick={() => open(entry)} disabled={opening || deletingId !== null} aria-label={`Open comparison from ${new Date(entry.createdAt).toLocaleString()}`}>
+          <button class="image-open entry-preview" onclick={() => open(entry)} disabled={busy} aria-label={`Open comparison from ${new Date(entry.createdAt).toLocaleString()}`}>
             <span class="thumbnails"><img src={entry.reference.thumbnail} alt="Reference preview" /><img src={entry.source.thumbnail} alt="Source preview" /></span>
           </button>
-          <button class="entry-select" onclick={() => chooseEntry(entry.id)} disabled={deletingId !== null} title={entry.note}>
+          <button class="entry-select" onclick={() => chooseEntry(entry.id)} disabled={busy} title={entry.note}>
             <strong>{new Date(entry.createdAt).toLocaleString()}</strong>
             <small>{entry.alignment.method === 'auto' ? 'Auto align' : 'Manual anchors'} &nbsp; · &nbsp; {entry.parts.length} {entry.parts.length === 1 ? 'part' : 'parts'}</small>
             <NotePreview note={entry.note} focusable={false} />
           </button>
         </div>
-        <button class="delete" onclick={() => remove(entry)} disabled={opening || deletingId !== null} aria-label={`Delete entry from ${new Date(entry.createdAt).toLocaleString()}`} title="Delete entry">
+        <button class="delete" onclick={() => remove(entry)} disabled={busy} aria-label={`Delete entry from ${new Date(entry.createdAt).toLocaleString()}`} title="Delete entry">
           <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 3h4l1 4H9l1-4ZM6 7l1 14h10l1-14M10 11v6m4-6v6" /></svg>
         </button>
       </div>
@@ -96,15 +122,15 @@
       <h2>{new Date(selected.createdAt).toLocaleString()}</h2>
       <p>{selected.alignment.method === 'auto' ? 'Auto align' : 'Manual anchors'} &nbsp; · &nbsp; {selected.reference.name} → {selected.source.name}</p>
       <NotePreview note={selected.note} />
-      <button class="image-open" onclick={() => open()} disabled={opening || deletingId !== null} aria-label="Open comparison from image previews">
+      <button class="image-open" onclick={() => open()} disabled={busy} aria-label="Open comparison from image previews">
         <span class="thumbnails large"><img src={selected.reference.thumbnail} alt={selected.reference.name} /><img src={selected.source.thumbnail} alt={selected.source.name} /></span>
       </button>
       {#if selected.parts.length}
         <h3>Saved parts ({selected.parts.length})</h3>
-        <ul>{#each selected.parts as part}<li><button class="part-open" onclick={() => open()} disabled={opening || deletingId !== null} title={`${part.name}${part.note ? `\n${part.note}` : ''}\nOpen comparison`}><img class="part-thumbnail" src={part.thumbnail} alt={`Reference region: ${part.name}`} /><span>{part.name}</span></button></li>{/each}</ul>
+        <ul>{#each selected.parts as part}<li><button class="part-open" onclick={() => open()} disabled={busy} title={`${part.name}${part.note ? `\n${part.note}` : ''}\nOpen comparison`}><img class="part-thumbnail" src={part.thumbnail} alt={`Reference region: ${part.name}`} /><span>{part.name}</span></button></li>{/each}</ul>
       {/if}
       <p>Both images are saved. Reopen without realigning.</p>
-      <button class="primary" onclick={() => open()} disabled={opening || deletingId !== null}>{opening ? 'Opening…' : 'Open comparison'}</button>
+      <button class="primary" onclick={() => open()} disabled={busy}>{opening ? 'Opening…' : 'Open comparison'}</button>
     </div>
     {/key}
   {/if}
@@ -124,6 +150,12 @@
   .card:last-child { border-right: 0; }
   h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1rem; }
   h3 { font-size: 0.95rem; margin: 1.25rem 0 0.35rem; }
+  .entries-heading { align-items: center; display: flex; justify-content: space-between; margin: -0.5rem 0 0.5rem; }
+  .entries-heading h2 { margin: 0; }
+  .download-sources { align-items: center; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--accent); cursor: pointer; display: flex; justify-content: center; min-height: 44px; min-width: 44px; }
+  .download-sources:hover { background: var(--accent-tint); }
+  .download-sources:disabled, .card > button:disabled { cursor: not-allowed; opacity: 0.5; }
+  .download-status { overflow-wrap: anywhere; }
   p, small { color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
   .card > button:not(.primary, .level-back, .image-open, .new-entry) { background: var(--surface); border: 0; border-radius: 10px; color: var(--text); cursor: pointer; display: block; margin: 0.6rem 0; padding: 0.75rem; text-align: left; width: 100%; min-height: 44px; }
   .card > button.active { background: var(--accent-tint); box-shadow: inset 3px 0 var(--accent); }

@@ -248,7 +248,7 @@ export async function alignImagesManually(
 }
 
 /** Apply a previously saved source-to-reference transform without estimating alignment. */
-export async function restoreAlignment(ref: ImageData, src: ImageData, saved: {
+export async function restoreAlignment(ref: Pick<ImageData, 'width' | 'height'>, src: ImageData, saved: {
   homography: number[];
   method: 'manual' | 'auto';
   inlierCount: number;
