@@ -8,9 +8,9 @@
     restoreAlignment
   } from './lib/opencv';
   import type { AlignResult, CvState } from './lib/opencv';
-  import { deleteHistory, exportHistory, listHistory, saveHistory, thumbnail } from './lib/history';
+  import { deleteHistory, exportHistory, importHistory, listHistory, saveHistory, thumbnail } from './lib/history';
   import Icon from './components/Icon.svelte';
-  import type { HistoryEntry, SavedPart } from './lib/history';
+  import type { HistoryEntry, ImportSummary, SavedPart } from './lib/history';
   import { completeAnchors } from './lib/manualAnchors';
   import type { ManualAnchor, Point } from './lib/manualAnchors';
   import AnchorEditor from './components/AnchorEditor.svelte';
@@ -62,6 +62,9 @@
   let partNote = $state('');
   let saving = $state(false);
   let exporting = $state(false);
+  let importing = $state(false);
+  let importSummary = $state<ImportSummary | null>(null);
+  let importInput: HTMLInputElement = $state()!;
   let statusMsg = $state('');
   let errorMsg = $state('');
   let overlayAnimationFrame: number | null = null;
@@ -461,6 +464,22 @@
     finally { exporting = false; }
   }
 
+  async function uploadHistory(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || importing) return;
+    importing = true;
+    importSummary = null;
+    errorMsg = '';
+    try {
+      importSummary = await importHistory(file);
+      historyEntries = await listHistory();
+      if (currentEntry) currentEntry = historyEntries.find((entry) => entry.id === currentEntry?.id) ?? null;
+    } catch (error) { errorMsg = `Import failed: ${(error as Error).message}`; }
+    finally { importing = false; }
+  }
+
   async function savePart() {
     if (!selectedRegion || !partName.trim() || saving || (!currentEntry && !projectName.trim())) return;
     saving = true;
@@ -553,7 +572,9 @@
   <h1>Compare Sketch</h1>
   {#if historyOpen}
     <button class="secondary-btn icon-tool" aria-label="Back to comparison" title="Back to comparison" onclick={() => historyOpen = false}><Icon name="back" /></button>
-    <span title={exporting ? 'Exporting…' : 'Export all data — images, parts, alignment, and notes'}><button class="secondary-btn icon-tool" aria-label="Export all data" onclick={downloadHistory} disabled={exporting || !historyEntries.length}><Icon name="export" /></button></span>
+    <input type="file" accept=".json,application/json" aria-label="Import backup file" bind:this={importInput} onchange={uploadHistory} hidden />
+    <button class="secondary-btn icon-tool" aria-label="Import data" title={importing ? 'Importing…' : 'Import a JSON backup — existing data is kept'} onclick={() => importInput.click()} disabled={importing || exporting}><Icon name="import" /></button>
+    <span title={exporting ? 'Exporting…' : 'Export all data — images, parts, alignment, and notes'}><button class="secondary-btn icon-tool" aria-label="Export all data" onclick={downloadHistory} disabled={exporting || importing || !historyEntries.length}><Icon name="export" /></button></span>
   {:else if comparisonMode === 'manual' && manualEditing}<button class="secondary-btn icon-tool" aria-label="Cancel anchors" title="Cancel anchors" onclick={() => selectMode('visual')}><Icon name="back" /></button>
   {/if}
   <div class="header-actions">
@@ -569,6 +590,13 @@
 <main>
   {#if historyOpen}
     <div class="history-intro"><h2>History</h2><p>All data — images, parts, alignment — is stored in this browser.</p></div>
+    <div role="status" aria-live="polite">
+      {#if importing}<p>Importing backup…</p>
+      {:else if importSummary}
+        <p><strong>Import complete.</strong> Imported: {importSummary.imported.projects} projects, {importSummary.imported.entries} entries, {importSummary.imported.parts} parts.<br />
+          Already existed (kept): {importSummary.skipped.projects} projects, {importSummary.skipped.entries} entries, {importSummary.skipped.parts} parts.</p>
+      {/if}
+    </div>
     {#if errorMsg}<p role="alert">{errorMsg}</p>{/if}
     <HistoryView entries={historyEntries} onopen={openHistoryEntry} oncreate={startProjectEntry} ondelete={removeHistoryEntry} onstart={() => historyOpen = false} />
   {:else if !refImg || !srcImg}

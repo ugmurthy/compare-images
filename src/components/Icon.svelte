@@ -16,6 +16,7 @@
     manual: 'M12 2v5M12 17v5M2 12h5M17 12h5M17 12a5 5 0 1 1-10 0 5 5 0 0 1 10 0ZM12 11v2',
     history: 'M3 3v6h6M3 9a9 9 0 1 1 0 6M12 7v5l3 2',
     export: 'M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6',
+    import: 'M12 16V4m-5 5 5-5 5 5M4 15v6h16v-6',
     'replace-reference': 'M11 3H3v18h18V11M3 17l5-5 5 5 3-3 5 5M22 6H13m4-4-4 4 4 4',
     'replace-source': 'M11 3H3v18h18V11M3 17l5-5 5 5 3-3 5 5M13 6h9m-4-4 4 4-4 4',
     new: 'M14 3H4v18h16V11M18 2v8M14 6h8M8 9h3M8 13h6M8 17h6',

@@ -148,6 +148,91 @@ export function storageLevel(ratio: number): 'ok' | 'warning' | 'critical' {
   return ratio >= 0.8 ? 'critical' : ratio >= 0.6 ? 'warning' : 'ok';
 }
 
+export interface ImportSummary {
+  imported: { projects: number; entries: number; parts: number };
+  skipped: { projects: number; entries: number; parts: number };
+}
+
+export async function importHistory(file: File): Promise<ImportSummary> {
+  const data = JSON.parse(await file.text());
+  const text = (value: unknown): value is string => typeof value === 'string';
+  const number = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+  const positive = (value: unknown) => number(value) && value > 0;
+  const image = (value: any) => value && text(value.name) && positive(value.width) && positive(value.height)
+    && text(value.thumbnail) && text(value.file);
+  const part = (value: any) => value && text(value.id) && !!value.id && text(value.name) && text(value.note)
+    && text(value.thumbnail) && value.region && number(value.region.x) && number(value.region.y)
+    && positive(value.region.width) && positive(value.region.height);
+  if (data?.version !== 2 || !Array.isArray(data.entries)) throw new Error('Choose a version 2 Compare Sketch JSON backup.');
+  // Validate and decode the entire backup before making any changes.
+  const decode = (value: string, name: string): File => {
+    const match = /^data:([^;,]*);base64,([A-Za-z0-9+/]*={0,2})$/.exec(value);
+    if (!match || !match[2]) throw new Error('Backup contains an invalid image data URL.');
+    const bytes = Uint8Array.from(atob(match[2]), (character) => character.charCodeAt(0));
+    return new File([bytes], name, { type: match[1] });
+  };
+  const prepared: { entry: StoredEntry; file: File }[] = [];
+  for (const record of data.entries) {
+    if (!record || record.version !== 2 || !text(record.id) || !record.id || !text(record.projectName)
+      || !record.projectName.trim() || !text(record.createdAt) || !Number.isFinite(Date.parse(record.createdAt))
+      || !text(record.note) || !image(record.reference) || !image(record.source)
+      || !Number.isInteger(record.source.rotations) || record.source.rotations < 0 || record.source.rotations > 3
+      || !record.alignment || !['manual', 'auto'].includes(record.alignment.method)
+      || !Array.isArray(record.alignment.homography) || record.alignment.homography.length !== 9
+      || !record.alignment.homography.every(number) || !number(record.alignment.inlierCount)
+      || !Array.isArray(record.parts) || !record.parts.every(part)) throw new Error('Backup contains an invalid history entry.');
+    const entry: HistoryEntry = {
+      id: record.id, version: 2, projectName: record.projectName, createdAt: record.createdAt, note: record.note,
+      reference: { name: record.reference.name, width: record.reference.width, height: record.reference.height,
+        thumbnail: record.reference.thumbnail, file: decode(record.reference.file, record.reference.name) },
+      source: { name: record.source.name, width: record.source.width, height: record.source.height,
+        rotations: record.source.rotations, thumbnail: record.source.thumbnail, file: decode(record.source.file, record.source.name) },
+      alignment: { method: record.alignment.method, homography: record.alignment.homography, inlierCount: record.alignment.inlierCount },
+      parts: record.parts.map((item: SavedPart) => ({ id: item.id, name: item.name, note: item.note, thumbnail: item.thumbnail,
+        region: { x: item.region.x, y: item.region.y, width: item.region.width, height: item.region.height } }))
+    };
+    prepared.push(await prepareEntry(entry));
+  }
+  const summary: ImportSummary = {
+    imported: { projects: 0, entries: 0, parts: 0 }, skipped: { projects: 0, entries: 0, parts: 0 }
+  };
+  await transact('readwrite', (store, references) => {
+    const all = store.getAll();
+    all.onsuccess = () => {
+      const entries = new Map<string, HistoryEntry | StoredEntry>(all.result.map((entry) => [entry.id, entry]));
+      const projectKey = (entry: HistoryEntry | StoredEntry) => JSON.stringify([entry.projectName, entry.reference.name]);
+      const projects = new Set(all.result.map(projectKey));
+      const seenProjects = new Set<string>();
+      for (const { entry, file } of prepared) {
+        const existing = entries.get(entry.id);
+        const key = projectKey(existing ?? entry);
+        if (!seenProjects.has(key)) {
+          summary[projects.has(key) ? 'skipped' : 'imported'].projects++;
+          seenProjects.add(key);
+          projects.add(key);
+        }
+        summary[existing ? 'skipped' : 'imported'].entries++;
+        const parts = existing ? [...existing.parts] : [];
+        const ids = new Set(parts.map((part) => part.id));
+        for (const part of entry.parts) {
+          if (ids.has(part.id)) summary.skipped.parts++;
+          else { parts.push(part); ids.add(part.id); summary.imported.parts++; }
+        }
+        // Existing entry metadata and parts always win, even across concurrent imports.
+        const merged = { ...(existing ?? entry), parts };
+        if (!existing) {
+          const reference = references.getKey(entry.referenceId);
+          reference.onsuccess = () => { if (reference.result === undefined) references.put(file, entry.referenceId); };
+        }
+        if (!existing || parts.length !== existing.parts.length) store.put(merged);
+        entries.set(entry.id, merged);
+      }
+    };
+    return all;
+  });
+  return summary;
+}
+
 export async function exportHistory(): Promise<void> {
   const entries = await listHistory();
   const encode = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {

@@ -169,7 +169,7 @@
   .entry-row.active { background: var(--accent-tint); box-shadow: inset 3px 0 var(--accent); }
   .entry-content { flex: 1; min-width: 0; }
   .image-open.entry-preview { padding: 0.75rem 0.75rem 0; box-sizing: border-box; }
-  .entry-select { background: transparent; border: 0; color: var(--text); cursor: pointer; flex: 1; min-width: 0; padding: 0.75rem; text-align: left; }
+  .entry-select { background: transparent; border: 0; box-sizing: border-box; color: var(--text); cursor: pointer; min-width: 0; padding: 0.75rem; text-align: left; width: 100%; }
   .entry-select:disabled { cursor: not-allowed; }
   .entry-select :global(.note) { color: var(--muted); font-size: 0.78rem; margin-top: 0.3rem; }
   .image-open, .part-open { background: transparent; border: 0; color: var(--text); cursor: pointer; padding: 0; text-align: left; width: 100%; }

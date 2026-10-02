@@ -1,4 +1,4 @@
-import { deleteHistory, exportHistory, listHistory, saveHistory, type HistoryEntry } from '../src/lib/history';
+import { deleteHistory, exportHistory, importHistory, listHistory, saveHistory, type HistoryEntry } from '../src/lib/history';
 
 // Run in a disposable browser session against Vite:
 // await (await import('/tests/history.browser.ts')).testHistoryStorage()
@@ -137,5 +137,46 @@ export async function testHistoryStorage(): Promise<string> {
   }
   await deleteHistory('7');
   await inspect(0, 0);
-  return 'PASS: v2 migration, content deduplication, concurrent saves, metadata/source preservation, export, updates, last-user reference cleanup, and migration races';
+
+  // Import the actual export, then change local records before importing it again.
+  await importHistory(new File([await exported!.text()], 'backup.json'));
+  await inspect(5, 2);
+  restored = await listHistory();
+  check(await restored.find((record) => record.id === '3')!.reference.file.text() === 'reference B', 'Import restores distinct reference bytes');
+  check(await restored.find((record) => record.id === '2')!.source.file.text() === 'source 2', 'Import restores source bytes');
+  const local = restored.find((record) => record.id === '1')!;
+  await saveHistory({ ...local, note: 'Keep local note', parts: [{ ...local.parts[0], note: 'Keep local part' }] });
+  await deleteHistory('2');
+  await deleteHistory('4');
+  const backup = JSON.parse(await exported!.text());
+  const incoming = backup.entries.find((record: HistoryEntry) => record.id === '1');
+  incoming.projectName = 'Do not rename local project';
+  incoming.parts.push({ ...incoming.parts[0], id: 'new-part', note: 'Imported part' });
+  const fresh = { ...backup.entries.find((record: HistoryEntry) => record.id === '3'), id: '8', projectName: 'New project' };
+  const input = new File([JSON.stringify({ version: 2, entries: [...backup.entries, fresh, fresh] })], 'backup.json');
+  const summary = await importHistory(input);
+  // Removing entry 4 also removed the only project using renamed.png.
+  check(JSON.stringify(summary) === JSON.stringify({ imported: { projects: 2, entries: 3, parts: 3 }, skipped: { projects: 1, entries: 4, parts: 4 } }), `Import counts new projects, entries and parts, including duplicate IDs: ${JSON.stringify(summary)}`);
+  await inspect(6, 2);
+  const kept = (await listHistory()).find((record) => record.id === '1')!;
+  check(kept.projectName === 'Study' && kept.note === 'Keep local note' && kept.parts[0].note === 'Keep local part'
+    && kept.parts.length === 2 && kept.parts[1].note === 'Imported part', 'Import keeps local metadata and parts while appending missing parts');
+  const repeats = await Promise.all([importHistory(input), importHistory(input)]);
+  check(repeats.every((result) => result.imported.projects === 0 && result.imported.entries === 0 && result.imported.parts === 0), 'Repeated concurrent imports are idempotent');
+  const concurrent = new File([JSON.stringify({ version: 2, entries: [{ ...fresh, id: '9', projectName: 'Concurrent' }] })], 'concurrent.json');
+  const races = await Promise.all([importHistory(concurrent), importHistory(concurrent)]);
+  check(races.reduce((total, result) => total + result.imported.entries, 0) === 1
+    && races.reduce((total, result) => total + result.imported.parts, 0) === 1, 'Concurrent new imports insert exactly once');
+  for (const invalid of ['{', JSON.stringify({ version: 1, entries: [] }), JSON.stringify({ version: 2, entries: [
+    { ...fresh, id: 'must-not-save' }, { ...fresh, id: 'bad', source: { ...fresh.source, file: 'https://example.com/image.png' } }
+  ] }), JSON.stringify({ version: 2, entries: [{ ...fresh, alignment: { ...fresh.alignment, homography: [1] } }] })]) {
+    let rejected = false;
+    try { await importHistory(new File([invalid], 'invalid.json')); }
+    catch { rejected = true; }
+    check(rejected, 'Invalid backup is rejected');
+    await inspect(7, 2);
+  }
+  for (const record of await listHistory()) await deleteHistory(record.id);
+  await inspect(0, 0);
+  return 'PASS: migration, reference deduplication, export/import round-trip, non-overwriting entry/part merges, summary counts, repeated/concurrent imports, invalid-backup atomicity, and reference cleanup';
 }
