@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { exportHistory, type HistoryEntry } from '../lib/history';
+  import type { HistoryEntry } from '../lib/history';
   import NotePreview from './NotePreview.svelte';
 
   let { entries, onopen, ondelete, onstart }: {
@@ -10,7 +10,6 @@
   } = $props();
   let project = $state('');
   let selectedId = $state('');
-  let exporting = $state(false);
   let opening = $state(false);
   let deletingId: string | null = $state(null);
   let error = $state('');
@@ -38,14 +37,6 @@
     finally { opening = false; }
   }
 
-  async function download() {
-    exporting = true;
-    error = '';
-    try { await exportHistory(); }
-    catch (cause) { error = `Export failed: ${(cause as Error).message}`; }
-    finally { exporting = false; }
-  }
-
   async function remove(entry: HistoryEntry) {
     if (!window.confirm(`Delete this comparison from ${entry.projectName}, including its ${entry.parts.length} saved parts? This cannot be undone.`)) return;
     const wasSelected = selected?.id === entry.id;
@@ -59,10 +50,6 @@
   }
 </script>
 
-<div class="export-tools">
-  <p>Export includes original images, alignments, notes, and parts. Export before deleting entries to free space.</p>
-  <button onclick={download} disabled={exporting || !entries.length}>{exporting ? 'Exporting…' : 'Export all data'}</button>
-</div>
 {#if error}<p class="error" role="alert">{error}</p>{/if}
 <section class="history" aria-label="History">
   {#if !entries.length}<div class="empty"><p>No saved comparisons yet.</p><button onclick={onstart}>Start a comparison</button></div>{:else}
@@ -119,8 +106,6 @@
 </section>
 
 <style>
-  .export-tools { align-items: center; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; }
-  .export-tools button { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; padding: 0.7rem 1rem; min-height: 44px; font-size: 0.85rem; }
   .thumbnails { display: flex; gap: 0.4rem; margin: 0.5rem 0; }
   .thumbnails img { background: #f7f6f3; border: 1px solid var(--border); border-radius: 6px; height: 60px; object-fit: contain; width: calc(50% - 0.2rem); }
   .large img { height: 130px; }

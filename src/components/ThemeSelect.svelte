@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Icon from './Icon.svelte';
 
   let theme = $state('system');
   try {
@@ -25,12 +26,17 @@
   });
 </script>
 
-<select aria-label="Color theme" title="Color theme" bind:value={theme}>
-  <option value="system">◐ System</option>
-  <option value="light">☀ Light</option>
-  <option value="dark">☾ Dark</option>
-</select>
+<div class="theme-tool" title={`Color theme: ${theme}`}>
+  <Icon name="theme" />
+  <select aria-label="Color theme" bind:value={theme}>
+    <option value="system">System</option>
+    <option value="light">Light</option>
+    <option value="dark">Dark</option>
+  </select>
+</div>
 
 <style>
-  select { font-size: 0.8rem; max-width: 110px; }
+  .theme-tool { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+  select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  .theme-tool:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

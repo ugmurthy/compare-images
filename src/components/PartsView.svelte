@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import Icon from './Icon.svelte';
   import type { Region } from '../lib/region';
   import type { SavedPart } from '../lib/history';
 
@@ -70,23 +71,23 @@
 
   <div class="part-toolbar">
     <button class="icon-button" aria-label="Back to whole image" title="Whole image" onclick={onback}>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 5-7 7 7 7M5 12h15" /></svg>
+      <Icon name="back" />
     </button>
     <div class="view-toggle">
       <button class="icon-button" aria-label="Side by side" title="Side by side" aria-pressed={mode === 'side-by-side'} onclick={() => { stop(); mode = 'side-by-side'; }}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="16" rx="1.5" /><rect x="14" y="4" width="7" height="16" rx="1.5" /></svg>
+        <Icon name="side-by-side" />
       </button>
       <button class="icon-button" aria-label="Stack vertically" title="Stacked" aria-pressed={mode === 'stacked'} onclick={() => { stop(); mode = 'stacked'; }}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="7" rx="1.5" /><rect x="4" y="14" width="16" height="7" rx="1.5" /></svg>
+        <Icon name="stacked" />
       </button>
       <button class="icon-button" aria-label="Overlay" title="Overlay" aria-pressed={mode === 'overlay'} onclick={() => mode = 'overlay'}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="2" /><rect x="9" y="9" width="12" height="12" rx="2" /></svg>
+        <Icon name="overlay" />
       </button>
     </div>
     {#if mode === 'overlay'}
       <div class="opacity-tools">
       <button class="icon-button" aria-label={playing ? 'Stop opacity animation' : 'Play opacity animation'} aria-pressed={playing} title={playing ? 'Stop' : 'Play'} onclick={play}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">{#if playing}<rect x="6" y="6" width="12" height="12" rx="1" />{:else}<path d="m8 5 11 7-11 7Z" />{/if}</svg>
+        <Icon name={playing ? 'stop' : 'play'} />
       </button>
       <input type="range" min="0" max="1" step="0.01" bind:value={opacity} aria-label="Overlay opacity" oninput={stop} />
       <output>{Math.round(opacity * 100)}%</output>
@@ -94,12 +95,12 @@
     {/if}
     <div class="part-actions">
       <button class="icon-button" aria-label="New part" title="New part — select a new region" onclick={onnewregion}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        <Icon name="plus" />
       </button>
       {#if onsave}
         <span title={selectedPart ? 'Already saved — Save part is unavailable for saved parts' : 'Save part'}>
           <button class="icon-button primary" aria-label="Save part" disabled={selectedPart !== null} onclick={onsave}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z" /><path d="M7 3v6h9V3M7 21v-8h10v8" /></svg>
+            <Icon name="save" />
           </button>
         </span>
       {/if}
@@ -111,10 +112,10 @@
   </div>
   {#if parts.length}
     <nav class="part-dock" aria-label="Saved part navigation">
-      <button aria-label="Previous part" title="Previous part" onclick={() => { stop(); onprevious?.(); }} disabled={partIndex <= 0}>‹</button>
+      <span title="Previous part"><button class="icon-button" aria-label="Previous part" onclick={() => { stop(); onprevious?.(); }} disabled={partIndex <= 0}><Icon name="previous" /></button></span>
       <span class="part-title" title={selectedPart?.name ?? 'Selected region'}>{selectedPart?.name ?? 'Selected region'}</span>
       <span class="part-count">{partIndex < 0 ? '—' : partIndex + 1} / {parts.length}</span>
-      <button aria-label="Next part" title="Next part" onclick={() => { stop(); onnext?.(); }} disabled={partIndex >= parts.length - 1}>›</button>
+      <span title="Next part"><button class="icon-button" aria-label="Next part" onclick={() => { stop(); onnext?.(); }} disabled={partIndex >= parts.length - 1}><Icon name="next" /></button></span>
     </nav>
   {/if}
 </section>
@@ -129,14 +130,15 @@
   button { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer; min-height: 44px; padding: 0.5rem 0.75rem; font-size: 0.85rem; }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
   .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; flex-shrink: 0; }
-  svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
   .part-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 16px; }
   .view-toggle { display: flex; border: 1px solid var(--border); border-radius: 8px; background: var(--control-bg); padding: 2px; }
   .view-toggle button { border: 0; background: transparent; }
   .view-toggle button[aria-pressed='true'] { background: var(--accent-tint); color: var(--accent); }
   .primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   .primary:disabled { background: var(--control-bg); color: var(--muted); border-color: var(--border); }
-  .opacity-tools { display: flex; align-items: center; gap: 8px; }
+  .opacity-tools { display: contents; }
+  .opacity-tools input { order: 1; width: calc(100% - 58px); margin-top: 8px; }
+  .opacity-tools output { order: 2; margin-top: 8px; }
   .parts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin: auto; max-width: 1250px; }
   .parts-grid.stacked { grid-template-columns: 1fr; max-width: 850px; }
   .parts-grid.overlay { display: block; position: relative; }
@@ -157,9 +159,9 @@
   .part-actions { display: flex; gap: 8px; margin-left: auto; }
   @media (max-width: 719px) {
     canvas { height: min(42vh, 450px); }
-    .part-toolbar { gap: 6px; }
+    .part-toolbar { gap: 4px; }
+    .icon-button { width: 40px; }
     .part-actions { gap: 4px; }
-    .opacity-tools { order: 3; width: 100%; padding-top: 8px; border-top: 1px solid var(--border); }
-    input { flex: 1; min-width: 0; width: 100px; }
   }
+  @media (max-width: 380px) { .icon-button { width: 36px; } }
 </style>

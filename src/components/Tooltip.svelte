@@ -23,7 +23,7 @@
       const target = (event.target as Element).closest<HTMLElement>('[data-tooltip]');
       if (target === active) return;
       hide();
-      if (!target || !target.dataset.tooltip || target.matches(':disabled')) return;
+      if (!target || !target.dataset.tooltip) return;
       active = target;
       previousDescription = target.getAttribute('aria-describedby');
       target.setAttribute('aria-describedby', [previousDescription, 'app-tooltip'].filter(Boolean).join(' '));

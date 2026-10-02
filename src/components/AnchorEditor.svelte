@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ManualAnchor, Point } from '../lib/manualAnchors';
+  import Icon from './Icon.svelte';
 
   let {
     refImg,
@@ -244,18 +245,18 @@
     </div>
     <div class="toolbar-actions">
       <button class="anchor-btn" class:active={gridVisible} onclick={() => gridVisible = !gridVisible} aria-pressed={gridVisible} aria-label="Grid" title="Grid">
-        <span aria-hidden="true">▦</span><span class="dock-label">Grid</span>
+        <Icon name="grid" />
       </button>
       <button class="anchor-btn" onclick={ontogglelist} aria-pressed={listExpanded} aria-label="Point list" title="Point list">
-        <span aria-hidden="true">☷</span><span class="dock-label">{listExpanded ? 'Hide points' : 'Point list'}</span>
+        <Icon name="list" />
       </button>
       <button class="anchor-btn" onclick={onundo} disabled={anchors.length === 0} aria-label="Undo" title="Undo">
-        <span aria-hidden="true">↶</span><span class="dock-label">Undo</span>
+        <Icon name="undo" />
       </button>
       <button class="anchor-btn danger" onclick={onclear} disabled={anchors.length === 0} aria-label="Clear all" title="Clear all">
-        <span aria-hidden="true">⌫</span><span class="dock-label">Clear all</span>
+        <Icon name="clear" />
       </button>
-      <button class="anchor-btn apply" onclick={onapply} disabled={!canApply}>✓ &nbsp; Apply {completeCount} anchors</button>
+      <span title={`Apply ${completeCount} paired anchors — at least four required`}><button class="anchor-btn apply" aria-label="Apply manual alignment" onclick={onapply} disabled={!canApply}><Icon name="check" /></button></span>
     </div>
   </div>
 
@@ -813,7 +814,7 @@
   .anchor-toolbar > div:first-child { display: none; }
   .toolbar-actions { align-items: center; }
   .anchor-btn { border: 0; border-radius: 8px; font-weight: 500; white-space: nowrap; }
-  .anchor-btn.apply { background: var(--accent); color: var(--on-accent); padding-inline: 1.2rem; }
+  .anchor-btn.apply { background: var(--accent); color: var(--on-accent); }
   .anchor-btn.apply:disabled { background: #aab2c9; }
   .anchor-btn.active { background: var(--accent-tint); }
   .placement-guide { background: transparent; border: 0; color: var(--muted); padding: 0.2rem; }
@@ -829,15 +830,12 @@
     .grid-controls input[type="range"], .link-grid { width: 60%; }
   }
   .anchor-toolbar { bottom: calc(24px + env(safe-area-inset-bottom)); box-shadow: var(--shadow); min-height: 64px; }
-  .anchor-btn { align-items: center; display: flex; gap: 4px; justify-content: center; min-height: 44px; }
-  .anchor-btn > span:first-child { font-size: 18px; }
+  .anchor-btn { align-items: center; display: flex; justify-content: center; min-height: 44px; width: 44px; padding: 0; }
   @media (max-width: 719px) { .anchor-workspace { flex-direction: column; } }
   @media (max-width: 479px) {
     .anchor-toolbar { border-radius: 999px; width: calc(100vw - 24px); }
     .toolbar-actions { flex-wrap: nowrap; gap: 2px; }
     .anchor-btn { flex: none; min-width: 42px; padding: 4px; }
-    .anchor-btn .dock-label { display: none; }
-    .anchor-btn.apply { font-size: 12px; min-width: 0; padding-inline: 8px; }
     .placement-guide { font-weight: 500; }
   }
 </style>

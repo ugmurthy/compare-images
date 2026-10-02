@@ -8,7 +8,8 @@
     restoreAlignment
   } from './lib/opencv';
   import type { AlignResult, CvState } from './lib/opencv';
-  import { deleteHistory, listHistory, saveHistory, thumbnail } from './lib/history';
+  import { deleteHistory, exportHistory, listHistory, saveHistory, thumbnail } from './lib/history';
+  import Icon from './components/Icon.svelte';
   import type { HistoryEntry, SavedPart } from './lib/history';
   import { completeAnchors } from './lib/manualAnchors';
   import type { ManualAnchor, Point } from './lib/manualAnchors';
@@ -49,15 +50,9 @@
   let historyOpen = $state(false);
   let historyEntries: HistoryEntry[] = $state([]);
   let currentEntry: HistoryEntry | null = $state(null);
-  let restoredMethod: 'manual' | 'auto' | null = $state(null);
   let selectedPartId = $state('');
   let savePanel = $state(false);
   let savingPart = $state(false);
-  let actionMenu = $state(false);
-  let menuTop = $state(0);
-  let menuRight = $state(24);
-  let actionButton: HTMLButtonElement = $state()!;
-  let actionMenuElement: HTMLElement = $state()!;
   let saveDialog: HTMLDivElement = $state()!;
   let returnFocus: HTMLElement | null = null;
   let projectName = $state('');
@@ -65,6 +60,7 @@
   let partName = $state('');
   let partNote = $state('');
   let saving = $state(false);
+  let exporting = $state(false);
   let statusMsg = $state('');
   let errorMsg = $state('');
   let overlayAnimationFrame: number | null = null;
@@ -241,7 +237,6 @@
     autoResult = null;
     manualEditing = true;
     currentEntry = null;
-    restoredMethod = null;
     selectedPartId = '';
     savePanel = false;
   }
@@ -393,7 +388,6 @@
       }
       if (result.method !== 'none') {
         if (currentEntry?.alignment.method === method) currentEntry = null;
-        if (restoredMethod === method) restoredMethod = null;
       }
       viewMode = defaultViewMode();
     } catch (error) {
@@ -404,10 +398,7 @@
   }
 
   function showSavePanel(part = false) {
-    const active = document.activeElement as HTMLElement;
-    returnFocus = active.closest('[role="menu"]')
-      ? document.querySelector<HTMLElement>('button[aria-expanded="true"]') : active;
-    actionMenu = false;
+    returnFocus = document.activeElement as HTMLElement;
     savingPart = part;
     projectName = currentEntry?.projectName ?? refFile?.name.replace(/\.[^.]+$/, '') ?? '';
     entryNote = '';
@@ -430,29 +421,6 @@
     const last = focusable.at(-1);
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-  }
-
-  function closeActionMenu() {
-    actionMenu = false;
-    void tick().then(() => actionButton?.focus());
-  }
-
-  function toggleActionMenu() {
-    actionMenu = !actionMenu;
-    if (!actionMenu) return;
-    const rect = actionButton.getBoundingClientRect();
-    menuTop = rect.bottom + 8;
-    menuRight = Math.max(16, window.innerWidth - rect.right);
-    void tick().then(() => actionMenuElement.querySelector<HTMLElement>('button:not(:disabled)')?.focus());
-  }
-
-  function menuKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') { event.preventDefault(); closeActionMenu(); return; }
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    event.preventDefault();
-    const items = [...actionMenuElement.querySelectorAll<HTMLElement>('button:not(:disabled), .menu-file input')];
-    const index = items.findIndex((item) => item === document.activeElement);
-    items[(index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
   }
 
   function newEntry(): HistoryEntry {
@@ -483,6 +451,13 @@
     finally { saving = false; }
   }
 
+  async function downloadHistory() {
+    exporting = true;
+    try { await exportHistory(); }
+    catch (error) { errorMsg = `Export failed: ${(error as Error).message}`; }
+    finally { exporting = false; }
+  }
+
   async function savePart() {
     if (!selectedRegion || !partName.trim() || saving || (!currentEntry && !projectName.trim())) return;
     saving = true;
@@ -506,7 +481,6 @@
     historyEntries = historyEntries.filter((entry) => entry.id !== id);
     if (currentEntry?.id === id) {
       currentEntry = null;
-      restoredMethod = null;
     }
   }
 
@@ -539,7 +513,6 @@
       if (entry.alignment.method === 'manual') { manualResult = result; manualEditing = false; }
       else autoResult = result;
       currentEntry = entry;
-      restoredMethod = entry.alignment.method;
       viewMode = defaultViewMode();
       historyOpen = false;
       statusMsg = 'Saved alignment restored without realigning.';
@@ -562,12 +535,14 @@
 
 <header class="app-header">
   <h1>Compare Sketch</h1>
-  {#if historyOpen}<button class="secondary-btn" onclick={() => historyOpen = false}>← Back to comparison</button>
-  {:else if comparisonMode === 'manual' && manualEditing}<button class="secondary-btn" onclick={() => selectMode('visual')}>← Cancel anchors</button>
+  {#if historyOpen}
+    <button class="secondary-btn icon-tool" aria-label="Back to comparison" title="Back to comparison" onclick={() => historyOpen = false}><Icon name="back" /></button>
+    <span title={exporting ? 'Exporting…' : 'Export all data — images, parts, alignment, and notes'}><button class="secondary-btn icon-tool" aria-label="Export all data" onclick={downloadHistory} disabled={exporting || !historyEntries.length}><Icon name="export" /></button></span>
+  {:else if comparisonMode === 'manual' && manualEditing}<button class="secondary-btn icon-tool" aria-label="Cancel anchors" title="Cancel anchors" onclick={() => selectMode('visual')}><Icon name="back" /></button>
   {/if}
   <div class="header-actions">
     <StorageStatus entries={historyEntries} />
-    {#if !historyOpen && !(comparisonMode === 'manual' && manualEditing && refImg && srcImg)}<button class="secondary-btn" onclick={() => { historyOpen = true; actionMenu = false; }}>◷ &nbsp; History</button>{/if}
+    {#if !historyOpen && !(comparisonMode === 'manual' && manualEditing && refImg && srcImg)}<button class="secondary-btn icon-tool" aria-label="History" title="History" onclick={() => historyOpen = true}><Icon name="history" /></button>{/if}
     <ThemeSelect />
     <button class="runtime-pill" class:ready={cvState === 'ready'} class:error={cvState === 'error'} onclick={() => { if (cvState === 'error') void loadCv(); }} aria-label={cvState === 'error' ? 'OpenCV failed. Retry' : runtimeLabel} title={cvState === 'error' ? 'OpenCV failed. Click to retry' : runtimeLabel}>
       <span class="runtime-dot"></span>
@@ -577,7 +552,8 @@
 
 <main>
   {#if historyOpen}
-    <div class="history-intro"><h2>History</h2><p>Images and alignments saved in this browser. Open without selecting files again.</p></div>
+    <div class="history-intro"><h2>History</h2><p>All data — images, parts, alignment — is stored in this browser.</p></div>
+    {#if errorMsg}<p role="alert">{errorMsg}</p>{/if}
     <HistoryView entries={historyEntries} onopen={openHistoryEntry} ondelete={removeHistoryEntry} onstart={() => historyOpen = false} />
   {:else if !refImg || !srcImg}
     <section class="upload-section">
@@ -613,21 +589,13 @@
       {#if !(comparisonMode === 'manual' && manualEditing)}
       <div class="workspace-header">
         <div class="workspace-actions">
-          <select aria-label="Alignment method" value={comparisonMode} onchange={(event) => {
-            const mode = event.currentTarget.value as ComparisonMode;
-            selectMode(mode);
-            if (mode === 'manual') manualEditing = true;
-            if (mode === 'auto' && !autoResult) void processImages('auto');
-          }} disabled={processingMode !== null}>
-            <option value="visual">Originals</option>
-            <option value="manual">Manual anchors</option>
-            <option value="auto" disabled={cvState !== 'ready'}>Auto align</option>
-          </select>
+          <span title={autoResult ? 'Auto alignment complete' : 'Align automatically'}><button class="secondary-btn icon-tool" aria-label="Align automatically" disabled={!!autoResult || cvState !== 'ready' || processingMode !== null} onclick={() => { selectMode('auto'); void processImages('auto'); }}><Icon name="auto" /></button></span>
+          <span title={manualResult ? 'Manual alignment complete' : 'Align manually with anchor points'}><button class="secondary-btn icon-tool" aria-label="Align manually" disabled={!!manualResult || processingMode !== null} onclick={() => { selectMode('manual'); manualEditing = true; }}><Icon name="manual" /></button></span>
           {#if !(comparisonMode === 'manual' && manualEditing)}
             <div class="view-toggle" aria-label="Result display">
-              <button class:active={viewMode === 'side-by-side'} aria-pressed={viewMode === 'side-by-side'} aria-label="Side by side" title="Side by side" onclick={() => selectViewMode('side-by-side')}>Side by side</button>
-              <button class:active={viewMode === 'stacked'} aria-pressed={viewMode === 'stacked'} aria-label="Stack vertically" title="Stack vertically" onclick={() => selectViewMode('stacked')}>Stacked</button>
-              <button class:active={viewMode === 'overlay'} aria-pressed={viewMode === 'overlay'} aria-label="Overlay" title="Overlay" onclick={() => selectViewMode('overlay')}>Overlay</button>
+              <button class="icon-tool" class:active={viewMode === 'side-by-side'} aria-pressed={viewMode === 'side-by-side'} aria-label="Side by side" title="Side by side" onclick={() => selectViewMode('side-by-side')}><Icon name="side-by-side" /></button>
+              <button class="icon-tool" class:active={viewMode === 'stacked'} aria-pressed={viewMode === 'stacked'} aria-label="Stack vertically" title="Stacked" onclick={() => selectViewMode('stacked')}><Icon name="stacked" /></button>
+              <button class="icon-tool" class:active={viewMode === 'overlay'} aria-pressed={viewMode === 'overlay'} aria-label="Overlay" title="Overlay" onclick={() => selectViewMode('overlay')}><Icon name="overlay" /></button>
             </div>
             {#if viewMode === 'overlay'}
               <div class="opacity-tools">
@@ -637,24 +605,26 @@
                   <output>{Math.round(overlayOpacity * 100)}%</output>
                 </label>
                 <button
-                  class="play-btn"
+                  class="play-btn icon-tool"
                   class:playing={overlayPlaying}
                   aria-pressed={overlayPlaying}
                   aria-label={overlayPlaying ? 'Stop opacity animation' : 'Play opacity animation'}
+                  title={overlayPlaying ? 'Stop opacity animation' : 'Play opacity animation'}
                   onclick={overlayPlaying ? stopOverlayAnimation : startOverlayAnimation}
                 >
-                  <span aria-hidden="true">{overlayPlaying ? '■' : '▶'}</span>
-                  {overlayPlaying ? 'Stop' : 'Play'}
+                  <Icon name={overlayPlaying ? 'stop' : 'play'} />
                 </button>
               </div>
             {/if}
           {/if}
 
-          <button class="secondary-btn" onclick={rotateSource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise" title="Rotate source image 90 degrees clockwise">↻ Rotate source</button>
-          <button class="secondary-btn" onclick={() => { selectedRegion = null; selectViewMode(defaultViewMode()); void tick().then(() => document.querySelector<HTMLElement>('[aria-label^="Select reference rectangle"]')?.focus()); }} disabled={!activeResult} aria-label="Select region on reference" title="Select region on reference">＋ New part</button>
-          <button class="secondary-btn" onclick={compareParts} disabled={!selectedRegion || !activeResult}>Compare parts</button>
-          <button class="primary-btn" onclick={() => showSavePanel()} disabled={!activeResult || restoredMethod === comparisonMode}>Save comparison</button>
-          <button class="secondary-btn" bind:this={actionButton} aria-label="More comparison actions" aria-expanded={actionMenu} onclick={toggleActionMenu}>More ···</button>
+          <span title="Rotate source image 90 degrees clockwise"><button class="secondary-btn icon-tool" onclick={rotateSource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise"><Icon name="rotate" /></button></span>
+          <span title="New part — select a new region"><button class="secondary-btn icon-tool" onclick={() => { selectedRegion = null; selectViewMode(defaultViewMode()); void tick().then(() => document.querySelector<HTMLElement>('[aria-label^="Select reference rectangle"]')?.focus()); }} disabled={!activeResult} aria-label="New part"><Icon name="plus" /></button></span>
+          <span title="Compare parts"><button class="secondary-btn icon-tool" onclick={compareParts} disabled={!selectedRegion || !activeResult} aria-label="Compare parts"><Icon name="parts" /></button></span>
+          <span title={currentEntry?.alignment.method === comparisonMode ? 'Comparison already saved' : 'Save comparison'}><button class="primary-btn icon-tool" aria-label="Save comparison" onclick={() => showSavePanel()} disabled={!activeResult || currentEntry?.alignment.method === comparisonMode || saving}><Icon name="save" /></button></span>
+          <label class="secondary-btn icon-tool file-tool" title="Replace reference"><Icon name="replace-reference" /><input aria-label="Replace reference" type="file" accept="image/*" onchange={(event) => handleCompactFile(event, 'ref')} /></label>
+          <label class="secondary-btn icon-tool file-tool" title="Replace source"><Icon name="replace-source" /><input aria-label="Replace source" type="file" accept="image/*" onchange={(event) => handleCompactFile(event, 'src')} /></label>
+          <button class="secondary-btn icon-tool" aria-label="New comparison" title="New comparison" onclick={clearAll}><Icon name="new" /></button>
         </div>
       </div>
       {/if}
@@ -696,10 +666,10 @@
 
       {#if savedParts.length && !(comparisonMode === 'manual' && manualEditing)}
         <nav class="saved-parts-bar" aria-label="Saved part navigation">
-          <button aria-label="Previous part" disabled>‹</button>
+          <span title="Whole image — no previous part"><button class="icon-tool" aria-label="Previous part" disabled><Icon name="previous" /></button></span>
           <span class="navigator-title">Whole image</span>
           <span class="navigator-count">{savedParts.length} parts</span>
-          <button aria-label="Next part" title="Open first saved part" onclick={() => openSavedPart(savedParts[0])}>›</button>
+          <button class="icon-tool" aria-label="Next part" title="Open first saved part" onclick={() => openSavedPart(savedParts[0])}><Icon name="next" /></button>
         </nav>
       {/if}
 
@@ -711,27 +681,8 @@
         </div>
       {/if}
     </section>
-    {#if !(comparisonMode === 'manual' && manualEditing)}
-      <div class="fab-area">
-        {#if actionMenu}
-          <div class="action-menu" style:top={`${menuTop}px`} style:right={`${menuRight}px`} style:max-height={`calc(100dvh - ${menuTop + 16}px)`} role="menu" aria-label="Comparison actions" tabindex="-1" bind:this={actionMenuElement} onkeydown={menuKeydown}>
-            {#if selectedRegion}<button role="menuitem" onclick={() => { selectedRegion = null; actionMenu = false; }}>Clear region selection</button>{/if}
-            <span>Alignment</span>
-            {#if comparisonMode === 'auto'}<button role="menuitem" onclick={() => { actionMenu = false; void processImages('auto'); }} disabled={cvState !== 'ready' || processingMode !== null}>{processingMode === 'auto' ? 'Aligning…' : 'Run auto align again'}</button>
-            {:else}<button role="menuitem" onclick={() => { selectMode('auto'); actionMenu = false; void processImages('auto'); }} disabled={cvState !== 'ready'}>Run auto align</button>{/if}
-            <button role="menuitem" onclick={() => { selectMode('manual'); manualEditing = true; actionMenu = false; }} disabled={restoredMethod === 'manual' && comparisonMode === 'manual'}>Edit manual anchors {comparisonMode === 'manual' ? '✓' : ''}</button>
-            <button role="menuitem" onclick={() => { selectMode('visual'); actionMenu = false; }}>View originals {comparisonMode === 'visual' ? '✓' : ''}</button>
-            <label class="menu-file">Replace reference<input role="menuitem" aria-label="Replace reference" type="file" accept="image/*" onchange={(event) => { handleCompactFile(event, 'ref'); actionMenu = false; }} /></label>
-            <label class="menu-file">Replace source<input role="menuitem" aria-label="Replace source" type="file" accept="image/*" onchange={(event) => { handleCompactFile(event, 'src'); actionMenu = false; }} /></label>
-            <button role="menuitem" onclick={() => { clearAll(); actionMenu = false; }}>New comparison</button>
-          </div>
-        {/if}
-      </div>
-    {/if}
   {/if}
 </main>
-
-<svelte:window onresize={() => actionMenu = false} onscroll={() => actionMenu = false} onpointerdown={(event) => { if (actionMenu && !(event.target as Element).closest('.fab-area') && event.target !== actionButton) actionMenu = false; }} />
 
 {#if savePanel}
   <div class="modal-scrim" role="presentation">
@@ -872,7 +823,6 @@
   }
   .play-btn:hover { background: var(--control-bg); border-color: var(--accent); }
   .play-btn.playing { background: #fff3f3; border-color: #fecaca; color: var(--danger); }
-  .play-btn span { font-size: 0.62rem; line-height: 1; }
   .workspace-body { padding: 0.85rem; }
   .save-panel { background: #f8fbff; border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 0.7rem; margin: 0.85rem; max-width: 600px; padding: 1rem; }
   .save-panel p { color: var(--muted); font-size: 0.8rem; }
@@ -938,14 +888,6 @@
   .play-btn { border-radius: 12px; font-weight: 500; min-height: 3rem; }
   .workspace-actions > .secondary-btn { white-space: nowrap; }
   .status-bar { background: #fff; border: 1px solid var(--border); border-radius: 999px; justify-self: center; margin-bottom: 1rem; order: 0; }
-  .action-menu { background: #fff; border: 1px solid var(--border); border-radius: 14px; bottom: 4.2rem; box-shadow: 0 12px 35px #352b1b20; display: grid; min-width: 230px; padding: 0.5rem; position: absolute; right: 0; }
-  .action-menu button { background: transparent; border: 0; border-radius: 8px; color: var(--text); cursor: pointer; padding: 0.75rem; text-align: left; }
-  .menu-file { border-radius: 8px; color: var(--text); cursor: pointer; padding: 0.75rem; position: relative; }
-  .menu-file:hover, .menu-file:focus-within { background: #eaf0ff; color: var(--accent); }
-  .menu-file input { cursor: pointer; inset: 0; opacity: 0; position: absolute; width: 100%; }
-  .action-menu button:hover, .action-menu button:focus-visible { background: #eaf0ff; color: var(--accent); }
-  .action-menu button:disabled { color: var(--muted); cursor: not-allowed; opacity: 0.5; }
-  .action-menu span { border-top: 1px solid var(--border); color: var(--muted); font-size: 0.72rem; margin-top: 0.35rem; padding: 0.8rem 0.75rem 0.25rem; }
   .modal-scrim { align-items: center; background: #161b27a6; display: flex; inset: 0; justify-content: center; padding: 1rem; position: fixed; z-index: 50; }
   .save-dialog { background: #fff; border-radius: 18px; box-shadow: 0 24px 60px #0003; max-height: calc(100dvh - 2rem); overflow: auto; width: min(100%, 520px); }
   .save-panel { background: transparent; border: 0; gap: 1rem; margin: 0; max-width: none; padding: 2rem; position: relative; }
@@ -969,7 +911,6 @@
     .opacity-control span { display: none; }
     .opacity-control input { width: 70px; }
     .view-toggle button { min-width: 2.5rem; padding: 0.3rem; }
-    .action-menu { max-width: calc(100vw - 6rem); min-width: 180px; }
     .modal-scrim { align-items: flex-end; padding: 0; }
     .save-dialog { border-radius: 18px 18px 0 0; max-height: calc(100dvh - env(safe-area-inset-top) - 1rem); padding-bottom: env(safe-area-inset-bottom); width: 100%; }
   }
@@ -991,8 +932,16 @@
   .workspace-nav { background: transparent; box-shadow: none; border: 0; border-radius: 0; margin: 0; max-width: none; min-height: 0; padding: 0; width: 100%; }
   .workspace-nav h2 { font-size: 22px; line-height: 30px; }
   .workspace-header { position: static; transform: none; max-width: none; border-radius: 12px; background: var(--surface); box-shadow: none; padding: 8px; order: 0; width: 100%; }
-  .workspace-actions { flex-wrap: wrap; justify-content: flex-start; width: 100%; gap: 8px; }
-  .workspace-actions > .secondary-btn { border: 1px solid var(--border); font-size: 0.85rem; height: 44px; padding: 8px 12px; }
+  .workspace-actions { flex-wrap: wrap; justify-content: flex-start; width: 100%; gap: 4px; }
+  .workspace-actions > span, .workspace-actions > div { flex-shrink: 0; }
+  .icon-tool { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; min-width: 44px; height: 44px; padding: 0; }
+  .workspace-actions .icon-tool { padding: 0; }
+  .file-tool { position: relative; border: 1px solid var(--border); cursor: pointer; }
+  .file-tool input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  .file-tool:hover { background: var(--control-bg); }
+  .file-tool:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .workspace-actions > .secondary-btn { border: 1px solid var(--border); height: 44px; padding: 0; }
+  .icon-tool:disabled { background: var(--control-bg); border-color: var(--border); color: var(--muted); opacity: 0.4; cursor: not-allowed; }
   .workspace-body { margin: 0; padding: 0; }
   .saved-parts-bar { align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); box-shadow: var(--shadow); display: grid; grid-template-columns: 44px minmax(0, 1fr) 64px 44px; gap: 4px; left: 50%; width: 360px; max-width: calc(100vw - 32px); min-height: 60px; padding: 6px; position: fixed; transform: translateX(-50%); white-space: nowrap; z-index: 20; }
   .saved-parts-bar button { border: 0; border-radius: 8px; background: var(--surface); color: var(--text); width: 44px; min-height: 44px; font-size: 1.45rem; cursor: pointer; }
@@ -1002,13 +951,10 @@
   .view-toggle { border: 1px solid var(--border); background: var(--control-bg); gap: 0; }
   .view-toggle button { border-radius: 6px; color: var(--muted); font-size: 0.8rem; height: 44px; min-width: 44px; padding: 8px 12px; }
   .view-toggle button.active { background: var(--accent-tint); color: var(--accent); }
-  .opacity-tools { border: 0; padding: 0; }
+  .opacity-tools { display: contents; }
+  .opacity-control { order: 1; width: 100%; padding: 8px 4px 4px; }
+  .opacity-control input { width: min(240px, 50vw); }
   .status-bar { background: var(--surface); border-radius: 8px; }
-  .fab-area { position: relative; bottom: auto; right: auto; display: block; z-index: 30; }
-  .action-menu { position: fixed; right: 24px; top: 150px; bottom: auto; transform: none; background: var(--surface); box-shadow: var(--shadow); max-height: calc(100dvh - 180px); max-width: calc(100vw - 32px); min-width: 260px; overflow-y: auto; }
-  .action-menu button { min-height: 44px; font-size: 0.85rem; }
-  .action-menu button:hover, .action-menu button:focus-visible, .menu-file:hover, .menu-file:focus-within { background: var(--accent-tint); }
-  .menu-file { font-size: 0.85rem; min-height: 44px; }
   .modal-scrim { background: var(--scrim); }
   .save-dialog { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); max-width: 480px; }
   .save-panel h2 { font-size: 1.5rem; }
@@ -1020,14 +966,20 @@
     main { padding: 20px 16px 120px; }
     .workspace-nav { align-items: flex-start; }
     .workspace-header { width: 100%; }
-    .workspace-actions > button { flex: 1 1 auto; }
-    .view-toggle { width: 100%; order: -1; }
-    .view-toggle button { flex: 1; }
-    .opacity-tools { width: 100%; }
+    .workspace-actions { gap: 2px; }
+    .workspace-actions .icon-tool { width: 25px; min-width: 25px; }
+    .workspace-actions:has(.opacity-tools) .icon-tool { width: 23px; min-width: 23px; }
+    .workspace-actions > button { flex: none; }
+    .view-toggle { width: auto; order: 0; }
+    .view-toggle button { flex: none; }
+    .opacity-tools { width: auto; }
     .opacity-control span { display: inline; }
-    .action-menu { right: 16px; top: 140px; max-height: calc(100dvh - 160px); }
     .modal-scrim { align-items: flex-end; padding: 0; }
     .save-dialog { border-radius: 14px 14px 0 0; max-width: none; padding-bottom: env(safe-area-inset-bottom); width: 100%; }
     .save-panel { padding: 24px; }
+  }
+  @media (max-width: 380px) {
+    .workspace-actions .icon-tool { width: 23px; min-width: 23px; }
+    .workspace-actions:has(.opacity-tools) .icon-tool { width: 21px; min-width: 21px; }
   }
 </style>
