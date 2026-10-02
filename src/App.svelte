@@ -56,6 +56,7 @@
   let saveDialog: HTMLDivElement = $state()!;
   let returnFocus: HTMLElement | null = null;
   let projectName = $state('');
+  let draftProjectName = $state('');
   let entryNote = $state('');
   let partName = $state('');
   let partNote = $state('');
@@ -166,6 +167,7 @@
     img.src = url;
 
     if (side === 'ref') {
+      draftProjectName = '';
       refFile = file;
       refUrl = url;
       refImg = null;
@@ -258,6 +260,7 @@
     refImg = null;
     srcImg = null;
     sourceRotations = 0;
+    draftProjectName = '';
     comparisonMode = 'visual';
     viewMode = defaultViewMode();
     overlayOpacity = 0.5;
@@ -400,7 +403,7 @@
   function showSavePanel(part = false) {
     returnFocus = document.activeElement as HTMLElement;
     savingPart = part;
-    projectName = currentEntry?.projectName ?? refFile?.name.replace(/\.[^.]+$/, '') ?? '';
+    projectName = currentEntry?.projectName ?? (draftProjectName || refFile?.name.replace(/\.[^.]+$/, '') || '');
     entryNote = '';
     partName = '';
     partNote = '';
@@ -523,6 +526,19 @@
     }
   }
 
+  async function startProjectEntry(entry: HistoryEntry) {
+    const reference = await readImage(entry.reference.file);
+    clearAll();
+    refFile = entry.reference.file;
+    refUrl = reference.url;
+    refImg = reference.image;
+    draftProjectName = entry.projectName;
+    historyOpen = false;
+    statusMsg = 'Reference loaded. Choose a new source image.';
+    await tick();
+    document.querySelector<HTMLInputElement>('[aria-label="Source upload"] input')?.focus();
+  }
+
   function imageDataFromImg(img: HTMLImageElement): ImageData {
     const canvas = document.createElement('canvas');
     canvas.width = img.naturalWidth;
@@ -554,7 +570,7 @@
   {#if historyOpen}
     <div class="history-intro"><h2>History</h2><p>All data — images, parts, alignment — is stored in this browser.</p></div>
     {#if errorMsg}<p role="alert">{errorMsg}</p>{/if}
-    <HistoryView entries={historyEntries} onopen={openHistoryEntry} ondelete={removeHistoryEntry} onstart={() => historyOpen = false} />
+    <HistoryView entries={historyEntries} onopen={openHistoryEntry} oncreate={startProjectEntry} ondelete={removeHistoryEntry} onstart={() => historyOpen = false} />
   {:else if !refImg || !srcImg}
     <section class="upload-section">
       <div class="intro">

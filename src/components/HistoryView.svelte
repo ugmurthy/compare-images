@@ -1,10 +1,12 @@
 <script lang="ts">
   import type { HistoryEntry } from '../lib/history';
+  import Icon from './Icon.svelte';
   import NotePreview from './NotePreview.svelte';
 
-  let { entries, onopen, ondelete, onstart }: {
+  let { entries, onopen, oncreate, ondelete, onstart }: {
     entries: HistoryEntry[];
     onopen: (entry: HistoryEntry) => Promise<void>;
+    oncreate: (entry: HistoryEntry) => Promise<void>;
     ondelete: (id: string) => Promise<void>;
     onstart: () => void;
   } = $props();
@@ -28,11 +30,11 @@
     error = '';
   }
 
-  async function open(entry = selected) {
+  async function open(entry = selected, create = false) {
     if (!entry || opening || deletingId !== null) return;
     opening = true;
     error = '';
-    try { await onopen(entry); }
+    try { await (create ? oncreate(entry) : onopen(entry)); }
     catch (cause) { error = (cause as Error).message; }
     finally { opening = false; }
   }
@@ -65,6 +67,10 @@
   <div class="card entries" class:mobile-hidden={level !== 'entries'}>
     <button class="level-back" onclick={() => level = 'projects'}>← Projects</button>
     <h2>Entries</h2>
+    <button class="new-entry" onclick={() => open(projectEntries[0], true)} disabled={opening || deletingId !== null}
+      aria-label={`New comparison in ${activeProject?.name} using existing reference`} title="New comparison using existing reference">
+      <Icon name="plus" />
+    </button>
     {#each projectEntries as entry}
       <div class="entry-row" class:active={selected?.id === entry.id}>
         <div class="entry-content">
@@ -119,10 +125,14 @@
   h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1rem; }
   h3 { font-size: 0.95rem; margin: 1.25rem 0 0.35rem; }
   p, small { color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
-  .card > button:not(.primary, .level-back, .image-open) { background: var(--surface); border: 0; border-radius: 10px; color: var(--text); cursor: pointer; display: block; margin: 0.6rem 0; padding: 0.75rem; text-align: left; width: 100%; min-height: 44px; }
+  .card > button:not(.primary, .level-back, .image-open, .new-entry) { background: var(--surface); border: 0; border-radius: 10px; color: var(--text); cursor: pointer; display: block; margin: 0.6rem 0; padding: 0.75rem; text-align: left; width: 100%; min-height: 44px; }
   .card > button.active { background: var(--accent-tint); box-shadow: inset 3px 0 var(--accent); }
   .card button strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card button small { display: block; overflow-wrap: anywhere; }
+  .new-entry { align-items: center; background: transparent; border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--accent); cursor: pointer; display: flex; justify-content: center; margin: 0 0 0.75rem; min-height: 100px; width: 100%; }
+  .new-entry:hover { background: var(--accent-tint); border-color: var(--accent); }
+  .new-entry:disabled { cursor: not-allowed; opacity: 0.5; }
+  .new-entry :global(svg) { height: 28px; width: 28px; }
   .entry-row { align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); border-radius: 8px; display: flex; margin: 0.2rem 0; min-width: 0; }
   .entry-row.active { background: var(--accent-tint); box-shadow: inset 3px 0 var(--accent); }
   .entry-content { flex: 1; min-width: 0; }

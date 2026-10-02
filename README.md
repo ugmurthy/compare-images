@@ -14,7 +14,7 @@ A web application for aligning and comparing two similar pencil/charcoal sketch 
   - Side-by-side: reference vs aligned source
   - Overlay: blend aligned source on top of reference with adjustable opacity
 - **Compare Parts**: After alignment, drag a rectangle on the reference in Side by side view, then click **Compare parts**. The dedicated page shows that region from the reference and aligned source, with icon buttons for stacked or side-by-side layouts. Back preserves your selection; changing the alignment clears it. Keyboard selection supports arrow keys, Shift for 10-pixel steps, Enter to mark each corner, and Escape to clear.
-- **History**: Save a timestamped alignment under a project, then save named parts and notes from the Parts view. A project can contain many comparisons sharing a reference filename. Select a history entry and reselect its image files to restore the alignment without matching features or anchors again. History metadata is stored as JSON objects in this browser's IndexedDB; the images themselves are not stored.
+- **History**: Save a timestamped alignment under a project, then save named parts and notes from the Parts view. A project can contain many comparisons sharing a reference filename. Reopen an entry with its saved images and alignment, or use the dashed **+** tile in Entries to compare a new source against the saved reference. Images and metadata stay in this browser's IndexedDB. Identical reference files are stored only once, matched by SHA-256 content hash; source files remain stored per entry. Existing history automatically migrates to shared reference storage, and a reference is removed only when no entries use it. Exports retain the self-contained format with both images in each entry.
 
 ## Tech Stack
 
