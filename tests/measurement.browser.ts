@@ -55,8 +55,14 @@ export async function testMeasurement(): Promise<string> {
     await tick();
     check(target.querySelector('.results')!.textContent!.includes('60.25%'), 'Endpoint keyboard nudging updates results');
     check(getComputedStyle(endpoint.querySelector('.marker')!).fill === 'none', 'Crosshair center has no opaque fill');
+    check(getComputedStyle(endpoint.querySelector('.marker')!).stroke === 'rgb(255, 255, 255)', 'Measurement crosshairs are white');
+    check(getComputedStyle(endpoint.querySelector('.hit-target')!).cursor === 'grab', 'Endpoint drag area uses the grab cursor');
     check(endpoint.querySelectorAll('.marker').length === 1 && (endpoint.querySelector('.marker') as SVGGraphicsElement).getBBox().width === 36, 'Single-stroke crosshair is 50% longer, without a duplicate halo');
     const surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
+    const cursorStyle = getComputedStyle(surface).cursor;
+    const cursorSvg = new DOMParser().parseFromString(decodeURIComponent(cursorStyle.match(/data:image\/svg\+xml,([^"\)]+)/)![1]), 'image/svg+xml');
+    check(cursorStyle.includes('20 20') && cursorSvg.querySelector('path')!.getAttribute('d') === endpoint.querySelector('.marker')!.getAttribute('d')
+      && cursorSvg.querySelector('path')!.getAttribute('stroke') === 'white', 'Placement cursor shares the white marker shape and centered hotspot');
     const capture = surface.setPointerCapture;
     const release = surface.releasePointerCapture;
     // Synthetic pointer events need capture stubbed; actual capture is exercised in the browser workflow.
@@ -66,11 +72,18 @@ export async function testMeasurement(): Promise<string> {
       const screen = new DOMPoint(421, 260).matrixTransform(surface.getScreenCTM()!);
       endpoint.querySelector('circle')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, isPrimary: true, pointerId: 1, button: 0, clientX: screen.x, clientY: screen.y }));
       await tick();
-      check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'hidden' && getComputedStyle(surface).cursor === 'none', 'Active marker and mouse cursor disappear during dragging');
+      check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible' && getComputedStyle(surface).cursor === 'none', 'Active crosshair stays visible without a duplicate mouse cursor during dragging');
       check(getComputedStyle(target.querySelector('[data-endpoint="0"] .marker')!).visibility === 'visible', 'The other endpoint stays visible');
+      const moved = new DOMPoint(390, 225).matrixTransform(surface.getScreenCTM()!);
+      surface.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: moved.x, clientY: moved.y }));
+      await tick();
+      const center = new DOMPoint(0, 0).matrixTransform((endpoint as SVGGraphicsElement).getScreenCTM()!);
+      check(Math.abs(center.x - moved.x) < 0.01 && Math.abs(center.y - moved.y) < 0.01
+        && getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible', 'Visible crosshair tracks the exact dragged point');
       surface.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientX: screen.x, clientY: screen.y }));
       await tick();
-      check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible', 'Marker returns on release');
+      check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible' && getComputedStyle(surface).cursor === cursorStyle, 'Marker remains visible and placement cursor returns on release');
+      check(getComputedStyle(endpoint.querySelector('.hit-target')!).cursor === 'grab', 'Drag area restores the grab cursor on release');
       endpoint.querySelector('circle')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, isPrimary: true, pointerId: 2, button: 0, clientX: screen.x, clientY: screen.y }));
       surface.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 2 }));
       await tick();
@@ -93,6 +106,8 @@ export async function testMeasurement(): Promise<string> {
     await tick();
     await place(100, 100);
     await place(500, 100);
+    check(getComputedStyle(target.querySelector('[data-endpoint="0"] .marker')!).stroke === 'rgb(255, 255, 255)', 'Reference calibration uses the same white crosshairs');
+    check(getComputedStyle(target.querySelector('[data-endpoint="0"] .hit-target')!).cursor === 'grab', 'Reference calibration drag area also uses the grab cursor');
     const save = target.querySelector<HTMLButtonElement>('[aria-label="Save calibration"]')!;
     check(save.disabled, 'A zero vertical span cannot calibrate both axes');
     const axes = target.querySelectorAll('select')[1];

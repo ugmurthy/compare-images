@@ -33,6 +33,7 @@
   let cursor = $state<Point | null>(null);
   const guideMask = $props.id();
   const crosshair = 'M -18 0 H -5 M 5 0 H 18 M 0 -18 V -5 M 0 5 V 18 M 4 0 A 4 4 0 1 0 -4 0 A 4 4 0 1 0 4 0';
+  const crosshairCursor = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="-20 -20 40 40"><path d="${crosshair}" fill="none" stroke="white" stroke-width="1"/></svg>`)}") 20 20, crosshair`;
   let bounds = $derived(calibrating || !region
     ? { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight } : region);
   let scale = $derived(Math.min(surfaceWidth / bounds.width, surfaceHeight / bounds.height));
@@ -181,7 +182,7 @@
       <div class="image-scroll">
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
         <svg bind:this={surface} viewBox="{bounds.x} {bounds.y} {bounds.width} {bounds.height}"
-          style:width="{zoom * 100}%" style:height="calc(var(--image-height) * {zoom})" style:cursor={drag && drag.index >= 0 ? 'none' : panning && zoom > 1 ? 'grab' : 'crosshair'} role="application" tabindex="0"
+          style:width="{zoom * 100}%" style:height="calc(var(--image-height) * {zoom})" style:cursor={drag && drag.index >= 0 ? 'none' : panning && zoom > 1 ? 'grab' : crosshairCursor} role="application" tabindex="0"
           aria-label="Measurement image. Click two points. Arrow keys move the cursor, Enter places a point. Tab to endpoints and use arrows to refine. Shift moves ten pixels. Escape clears."
           onpointerdown={begin} onpointermove={move} onpointerup={finish}
           onpointercancel={() => drag = null} onlostpointercapture={() => drag = null} onkeydown={(event) => keydown(event)}>
@@ -201,7 +202,7 @@
               role="button" tabindex="0" aria-label="Endpoint {index + 1}, x {format(p.x)}, y {format(p.y)}. Drag or use arrow keys."
               onkeydown={(event) => { event.stopPropagation(); keydown(event, index); }}>
               <circle r="22" fill="transparent" class="hit-target" style:cursor={drag?.index === index ? 'none' : 'grab'} />
-              <path class="marker" d={crosshair} visibility={drag?.index === index ? 'hidden' : 'visible'} />
+              <path class="marker" d={crosshair} />
             </g>
           {/each}
           {#if cursor}
@@ -270,9 +271,9 @@
   .image-scroll { overflow: auto; max-height: 62vh; border-radius: 8px; background: #f7f6f3; }
   svg { --image-height: 52vh; display: block; min-height: 240px; cursor: crosshair; touch-action: none; }
   svg:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .marker { fill: none; stroke: var(--accent); stroke-width: 1; pointer-events: none; }
+  .marker { fill: none; stroke: white; stroke-width: 1; pointer-events: none; }
   g[data-endpoint]:focus { outline: none; }
-  g:focus-visible .marker { stroke: #c02942; }
+  g:focus-visible .marker { stroke-width: 2; }
   button, input, select { font: inherit; color: var(--text); background: var(--control-bg); border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px; min-height: 44px; box-sizing: border-box; }
   button { cursor: pointer; }
   .icon-tool { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; flex-shrink: 0; }
