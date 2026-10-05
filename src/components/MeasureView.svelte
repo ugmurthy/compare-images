@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import type { Point } from '../lib/manualAnchors';
   import type { Region } from '../lib/region';
   import { measure, validCalibration, type Calibration } from '../lib/measurement';
@@ -31,9 +31,11 @@
   let surfaceHeight = $state(1);
   let drag = $state<{ index: number; id: number; x: number; y: number } | null>(null);
   let cursor = $state<Point | null>(null);
+  let pixels = $state<ImageData | null>(null);
+  let pointColors = $state<string[]>([]);
+  let cursorColor = $state('white');
   const guideMask = $props.id();
   const crosshair = 'M -18 0 H -5 M 5 0 H 18 M 0 -18 V -5 M 0 5 V 18 M 4 0 A 4 4 0 1 0 -4 0 A 4 4 0 1 0 4 0';
-  const crosshairCursor = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="-20 -20 40 40"><path d="${crosshair}" fill="none" stroke="white" stroke-width="1"/></svg>`)}") 20 20, crosshair`;
   let bounds = $derived(calibrating || !region
     ? { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight } : region);
   let scale = $derived(Math.min(surfaceWidth / bounds.width, surfaceHeight / bounds.height));
@@ -49,6 +51,15 @@
     && (axes !== 'horizontal' ? candidate.points[0].y !== candidate.points[1].y : true));
 
   onMount(() => {
+    const canvas = document.createElement('canvas');
+    const ratio = Math.min(1, 1024 / Math.max(image.naturalWidth, image.naturalHeight));
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    pixels = context.getImageData(0, 0, canvas.width, canvas.height);
     const observer = new ResizeObserver(([entry]) => {
       surfaceWidth = entry.contentRect.width;
       surfaceHeight = entry.contentRect.height;
@@ -65,6 +76,36 @@
       .finally(() => loading = false);
     return () => observer.disconnect();
   });
+
+  function contrastColor(p: Point, previous: string) {
+    if (!pixels) return previous;
+    const x = Math.round(p.x / image.naturalWidth * pixels.width);
+    const y = Math.round(p.y / image.naturalHeight * pixels.height);
+    let brightness = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const index = (Math.max(0, Math.min(pixels.height - 1, y + dy)) * pixels.width
+          + Math.max(0, Math.min(pixels.width - 1, x + dx))) * 4;
+        brightness += pixels.data[index] * 0.2126 + pixels.data[index + 1] * 0.7152 + pixels.data[index + 2] * 0.0722;
+      }
+    }
+    brightness /= 9;
+    // Retain the previous shade around the threshold to avoid flickering over texture.
+    return brightness > 140 ? 'black' : brightness < 116 ? 'white' : previous;
+  }
+
+  $effect(() => {
+    pointColors = points.map((p, index) => contrastColor(p, untrack(() => pointColors[index] ?? 'white')));
+    if (cursor) cursorColor = contrastColor(cursor, untrack(() => cursorColor));
+  });
+
+  async function centerZoom() {
+    cursor = null;
+    await tick();
+    const viewport = surface.parentElement!;
+    viewport.scrollLeft = (viewport.scrollWidth - viewport.clientWidth) / 2;
+    viewport.scrollTop = (viewport.scrollHeight - viewport.clientHeight) / 2;
+  }
 
   function clearPoints() {
     points = [];
@@ -126,7 +167,15 @@
   }
 
   function move(event: PointerEvent) {
-    if (!drag || event.pointerId !== drag.id) return;
+    if (!drag) {
+      cursor = null;
+      if (event.pointerType !== 'mouse' || loading || saving || (panning && zoom > 1)
+        || (event.target as Element).closest('[data-endpoint]')) return;
+      const p = eventPoint(event);
+      if (p.x >= bounds.x && p.x <= bounds.x + bounds.width && p.y >= bounds.y && p.y <= bounds.y + bounds.height) cursor = p;
+      return;
+    }
+    if (event.pointerId !== drag.id) return;
     if (drag.index === -1) {
       surface.parentElement!.scrollBy(drag.x - event.clientX, drag.y - event.clientY);
       drag.x = event.clientX;
@@ -176,15 +225,16 @@
     <div class="image-panel">
       <div class="image-tools">
         <span>{calibrating ? 'Calibrate on the full reference' : region ? 'Reference part' : 'Full reference'}</span>
-        {#if zoom > 1}<button class="icon-tool" aria-label={panning ? 'Resume measuring' : 'Pan image'} title={panning ? 'Resume measuring' : 'Pan image'} aria-pressed={panning} onclick={() => panning = !panning}><Icon name={panning ? 'measure' : 'pan'} /></button>{/if}
-        <label>Zoom <select bind:value={zoom}><option value={1}>Fit</option><option value={2}>2×</option><option value={4}>4×</option></select></label>
+        {#if zoom > 1}<button class="icon-tool" aria-label={panning ? 'Resume measuring' : 'Pan image'} title={panning ? 'Resume measuring' : 'Pan image'} aria-pressed={panning} onclick={() => { panning = !panning; cursor = null; }}><Icon name={panning ? 'measure' : 'pan'} /></button>{/if}
+        <label>Zoom <select bind:value={zoom} onchange={centerZoom}><option value={1}>Fit</option><option value={2}>2×</option><option value={4}>4×</option></select></label>
       </div>
-      <div class="image-scroll">
+      <div class="image-scroll" onscroll={() => cursor = null}>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
         <svg bind:this={surface} viewBox="{bounds.x} {bounds.y} {bounds.width} {bounds.height}"
-          style:width="{zoom * 100}%" style:height="calc(var(--image-height) * {zoom})" style:cursor={drag && drag.index >= 0 ? 'none' : panning && zoom > 1 ? 'grab' : crosshairCursor} role="application" tabindex="0"
+          style:width="{zoom * 100}%" style:height="calc(var(--image-height) * {zoom})" style:cursor={panning && zoom > 1 ? 'grab' : 'none'} role="application" tabindex="0"
           aria-label="Measurement image. Click two points. Arrow keys move the cursor, Enter places a point. Tab to endpoints and use arrows to refine. Shift moves ten pixels. Escape clears."
           onpointerdown={begin} onpointermove={move} onpointerup={finish}
+          onpointerleave={() => cursor = null}
           onpointercancel={() => drag = null} onlostpointercapture={() => drag = null} onkeydown={(event) => keydown(event)}>
           <image href={image.src} width={image.naturalWidth} height={image.naturalHeight} />
           {#if points.length === 2}
@@ -202,11 +252,11 @@
               role="button" tabindex="0" aria-label="Endpoint {index + 1}, x {format(p.x)}, y {format(p.y)}. Drag or use arrow keys."
               onkeydown={(event) => { event.stopPropagation(); keydown(event, index); }}>
               <circle r="22" fill="transparent" class="hit-target" style:cursor={drag?.index === index ? 'none' : 'grab'} />
-              <path class="marker" d={crosshair} />
+              <path class="marker" d={crosshair} style:stroke={pointColors[index] ?? 'white'} />
             </g>
           {/each}
           {#if cursor}
-            <g transform="translate({cursor.x} {cursor.y}) scale({1 / scale})" pointer-events="none"><path class="marker" d={crosshair} /></g>
+            <g class="placement-cursor" transform="translate({cursor.x} {cursor.y}) scale({1 / scale})" pointer-events="none"><path class="marker" d={crosshair} style:stroke={cursorColor} /></g>
           {/if}
         </svg>
       </div>

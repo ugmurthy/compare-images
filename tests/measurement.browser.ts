@@ -10,6 +10,13 @@ export async function testMeasurement(): Promise<string> {
   const canvas = document.createElement('canvas');
   canvas.width = 800;
   canvas.height = 600;
+  const context = canvas.getContext('2d')!;
+  context.fillStyle = '#202020';
+  context.fillRect(0, 0, 400, 600);
+  context.fillStyle = '#eeeeee';
+  context.fillRect(400, 0, 400, 600);
+  context.fillStyle = '#808080';
+  context.fillRect(350, 0, 30, 600);
   const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!)));
   const file = new File([blob], 'measurement-test.png', { type: 'image/png' });
   const url = URL.createObjectURL(file);
@@ -55,14 +62,31 @@ export async function testMeasurement(): Promise<string> {
     await tick();
     check(target.querySelector('.results')!.textContent!.includes('60.25%'), 'Endpoint keyboard nudging updates results');
     check(getComputedStyle(endpoint.querySelector('.marker')!).fill === 'none', 'Crosshair center has no opaque fill');
-    check(getComputedStyle(endpoint.querySelector('.marker')!).stroke === 'rgb(255, 255, 255)', 'Measurement crosshairs are white');
+    check(getComputedStyle(endpoint.querySelector('.marker')!).stroke === 'rgb(0, 0, 0)', 'Measurement crosshair is black on a light background');
+    check(getComputedStyle(target.querySelector('[data-endpoint="0"] .marker')!).stroke === 'rgb(255, 255, 255)', 'Measurement crosshair is white on a dark background');
     check(getComputedStyle(endpoint.querySelector('.hit-target')!).cursor === 'grab', 'Endpoint drag area uses the grab cursor');
     check(endpoint.querySelectorAll('.marker').length === 1 && (endpoint.querySelector('.marker') as SVGGraphicsElement).getBBox().width === 36, 'Single-stroke crosshair is 50% longer, without a duplicate halo');
     const surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
     const cursorStyle = getComputedStyle(surface).cursor;
-    const cursorSvg = new DOMParser().parseFromString(decodeURIComponent(cursorStyle.match(/data:image\/svg\+xml,([^"\)]+)/)![1]), 'image/svg+xml');
-    check(cursorStyle.includes('20 20') && cursorSvg.querySelector('path')!.getAttribute('d') === endpoint.querySelector('.marker')!.getAttribute('d')
-      && cursorSvg.querySelector('path')!.getAttribute('stroke') === 'white', 'Placement cursor shares the white marker shape and centered hotspot');
+    async function hover(x: number, y: number) {
+      const screen = new DOMPoint(x, y).matrixTransform(surface.getScreenCTM()!);
+      surface.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: screen.x, clientY: screen.y }));
+      await tick();
+      return target.querySelector('.placement-cursor .marker')!;
+    }
+    let preview = await hover(200, 230);
+    check(cursorStyle === 'none' && preview.getAttribute('d') === endpoint.querySelector('.marker')!.getAttribute('d')
+      && getComputedStyle(preview).stroke === 'rgb(255, 255, 255)', 'Drawn placement cursor matches marker shape and contrasts with dark background');
+    preview = await hover(450, 230);
+    check(getComputedStyle(preview).stroke === 'rgb(0, 0, 0)', 'Placement cursor switches to black on light background');
+    preview = await hover(360, 230);
+    check(getComputedStyle(preview).stroke === 'rgb(0, 0, 0)', 'Neutral texture retains black rather than flickering');
+    await hover(200, 230);
+    preview = await hover(360, 230);
+    check(getComputedStyle(preview).stroke === 'rgb(255, 255, 255)', 'Neutral texture retains white after a dark background');
+    endpoint.querySelector('.hit-target')!.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
+    await tick();
+    check(!target.querySelector('.placement-cursor'), 'Placement preview hides in endpoint grab area');
     const capture = surface.setPointerCapture;
     const release = surface.releasePointerCapture;
     // Synthetic pointer events need capture stubbed; actual capture is exercised in the browser workflow.
@@ -80,6 +104,7 @@ export async function testMeasurement(): Promise<string> {
       const center = new DOMPoint(0, 0).matrixTransform((endpoint as SVGGraphicsElement).getScreenCTM()!);
       check(Math.abs(center.x - moved.x) < 0.01 && Math.abs(center.y - moved.y) < 0.01
         && getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible', 'Visible crosshair tracks the exact dragged point');
+      check(getComputedStyle(endpoint.querySelector('.marker')!).stroke === 'rgb(255, 255, 255)', 'Dragged crosshair switches to white over a dark background');
       surface.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientX: screen.x, clientY: screen.y }));
       await tick();
       check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible' && getComputedStyle(surface).cursor === cursorStyle, 'Marker remains visible and placement cursor returns on release');
@@ -92,11 +117,23 @@ export async function testMeasurement(): Promise<string> {
       surface.setPointerCapture = capture;
       surface.releasePointerCapture = release;
     }
-    const zoom = target.querySelector('select')!;
-    zoom.value = '2';
-    zoom.dispatchEvent(new Event('change', { bubbles: true }));
-    await waitFor(() => Math.abs((endpoint as SVGGraphicsElement).getScreenCTM()!.a - 1) < 0.01);
-    check(target.querySelector('.results')!.textContent!.includes('60.25%'), 'Zoom does not change image-space measurements');
+    async function checkZoom(value: string, centerX: number, centerY: number) {
+      const zoom = target.querySelector('select')!;
+      zoom.value = value;
+      zoom.dispatchEvent(new Event('change', { bubbles: true }));
+      const viewport = target.querySelector('.image-scroll')!;
+      await waitFor(() => {
+        const s = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
+        const center = new DOMPoint(centerX, centerY).matrixTransform(s.getScreenCTM()!);
+        const rect = viewport.getBoundingClientRect();
+        return Math.abs(center.x - rect.left - viewport.clientWidth / 2) < 1
+          && Math.abs(center.y - rect.top - viewport.clientHeight / 2) < 1;
+      });
+      check(viewport.scrollLeft > 0 && viewport.scrollTop > 0, `${value}× zoom centers both scroll axes`);
+    }
+    await checkZoom('2', 300, 250);
+    await checkZoom('4', 300, 250);
+    check(target.querySelector('.results')!.textContent!.includes('60.25%'), 'Centered zoom does not change image-space measurements');
     await unmount(component);
     component = mount(MeasureView, { target, props: { image, file, onback: () => {} } });
     await waitFor(() => !!target.querySelector('.results'));
@@ -104,6 +141,8 @@ export async function testMeasurement(): Promise<string> {
     check(JSON.stringify(await loadCalibration(file)) === JSON.stringify(calibration), 'Calibration survives reopening');
     target.querySelector<HTMLButtonElement>('[aria-label="Redo calibration"]')!.click();
     await tick();
+    await checkZoom('2', 400, 300);
+    await checkZoom('4', 400, 300);
     await place(100, 100);
     await place(500, 100);
     check(getComputedStyle(target.querySelector('[data-endpoint="0"] .marker')!).stroke === 'rgb(255, 255, 255)', 'Reference calibration uses the same white crosshairs');
