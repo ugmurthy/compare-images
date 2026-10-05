@@ -20,6 +20,7 @@
   import ThemeSelect from './components/ThemeSelect.svelte';
   import NotePreview from './components/NotePreview.svelte';
   import PartsView from './components/PartsView.svelte';
+  import MeasureView from './components/MeasureView.svelte';
   import type { Region } from './lib/region';
   import ImageDrop from './components/ImageDrop.svelte';
   import type { ComparisonMode } from './components/ModeSwitch.svelte';
@@ -43,6 +44,8 @@
   let viewMode = $state(defaultViewMode());
   let selectedRegion: Region | null = $state(null);
   let showingParts = $state(false);
+  let measuring = $state(false);
+  let measurementRegion = $state<Region | null>(null);
   let overlayOpacity = $state(0.5);
   let overlayPlaying = $state(false);
   let sourceRotating = $state(false);
@@ -118,6 +121,20 @@
     stopOverlayAnimation();
     showingParts = true;
     window.scrollTo(0, 0);
+  }
+
+  function openMeasurement(region: Region | null = null) {
+    stopOverlayAnimation();
+    measurementRegion = region;
+    measuring = true;
+    window.scrollTo(0, 0);
+  }
+
+  async function closeMeasurement() {
+    measuring = false;
+    historyEntries = await listHistory();
+    await tick();
+    document.querySelector<HTMLButtonElement>('[aria-label="Measure reference"]')?.focus();
   }
 
   async function closeParts() {
@@ -254,6 +271,7 @@
   }
 
   function clearAll() {
+    measuring = false;
     if (refUrl) URL.revokeObjectURL(refUrl);
     if (srcUrl) URL.revokeObjectURL(srcUrl);
     refFile = null;
@@ -599,6 +617,8 @@
     </div>
     {#if errorMsg}<p role="alert">{errorMsg}</p>{/if}
     <HistoryView entries={historyEntries} onopen={openHistoryEntry} oncreate={startProjectEntry} ondelete={removeHistoryEntry} onstart={() => historyOpen = false} />
+  {:else if measuring && refImg && refFile}
+    <MeasureView image={refImg} file={refFile} region={measurementRegion} onback={() => { void closeMeasurement().catch((error) => errorMsg = error.message); }} />
   {:else if !refImg || !srcImg}
     <section class="upload-section">
       <div class="intro">
@@ -612,12 +632,14 @@
       <div class="upload-footer">
         <span>{selectedCount} of 2 selected</span><span aria-hidden="true">│</span>
         <button class="text-btn" onclick={clearAll} disabled={!refFile && !srcFile}>Reset</button>
+        {#if refImg}<button class="secondary-btn icon-tool" aria-label="Measure reference" title="Measure reference" onclick={() => openMeasurement()}><Icon name="measure" /></button>{/if}
       </div>
       <p class="privacy-note">Images stay in this browser.</p>
     </section>
   {:else if showingParts && selectedRegion && activeResult}
     <PartsView reference={refImg} aligned={activeResult.aligned} region={selectedRegion} onback={closeParts}
       parts={savedParts} selectedPart={selectedPart} onprevious={() => adjacentPart(-1)} onnext={() => adjacentPart(1)}
+      onmeasure={() => openMeasurement(selectedRegion)}
       onsave={() => showSavePanel(true)} onnewregion={() => { selectedRegion = null; void closeParts(); }} />
   {:else}
     <section class="workspace-shell">
@@ -633,6 +655,7 @@
       {#if !(comparisonMode === 'manual' && manualEditing)}
       <div class="workspace-header">
         <div class="workspace-actions">
+          <button class="secondary-btn icon-tool" aria-label="Measure reference" title="Measure reference" onclick={() => openMeasurement()}><Icon name="measure" /></button>
           <span title={autoResult ? 'Auto alignment complete' : 'Align automatically'}><button class="secondary-btn icon-tool" aria-label="Align automatically" disabled={!!autoResult || cvState !== 'ready' || processingMode !== null} onclick={() => { selectMode('auto'); void processImages('auto'); }}><Icon name="auto" /></button></span>
           <span title={manualResult ? 'Manual alignment complete' : 'Align manually with anchor points'}><button class="secondary-btn icon-tool" aria-label="Align manually" disabled={!!manualResult || processingMode !== null} onclick={() => { selectMode('manual'); manualEditing = true; }}><Icon name="manual" /></button></span>
           {#if !(comparisonMode === 'manual' && manualEditing)}

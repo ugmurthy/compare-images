@@ -1,4 +1,5 @@
 import type { Region } from './region';
+import { validCalibration, type Calibration } from './measurement';
 
 export interface SavedPart {
   id: string;
@@ -12,7 +13,7 @@ export interface HistoryEntry {
   id: string;
   version: 2;
   projectName: string;
-  reference: { name: string; width: number; height: number; file: File; thumbnail: string };
+  reference: { name: string; width: number; height: number; file: File; thumbnail: string; calibration?: Calibration };
   source: { name: string; width: number; height: number; rotations: number; file: File; thumbnail: string };
   createdAt: string;
   note: string;
@@ -23,6 +24,7 @@ export interface HistoryEntry {
 const DATABASE = 'compare-sketch-history';
 const STORE = 'entries';
 const REFERENCES = 'references';
+const CALIBRATIONS = 'calibrations';
 
 type StoredEntry = Omit<HistoryEntry, 'reference'> & {
   reference: Omit<HistoryEntry['reference'], 'file'>;
@@ -31,14 +33,17 @@ type StoredEntry = Omit<HistoryEntry, 'reference'> & {
 
 function openHistory(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE, 3);
+    const request = indexedDB.open(DATABASE, 4);
     request.onupgradeneeded = (event) => {
       if (event.oldVersion < 2) {
         if (request.result.objectStoreNames.contains(STORE)) request.result.deleteObjectStore(STORE);
         request.result.createObjectStore(STORE, { keyPath: 'id' });
       }
-      request.result.createObjectStore(REFERENCES);
-      request.transaction!.objectStore(STORE).createIndex('referenceId', 'referenceId');
+      if (event.oldVersion < 3) {
+        request.result.createObjectStore(REFERENCES);
+        request.transaction!.objectStore(STORE).createIndex('referenceId', 'referenceId');
+      }
+      request.result.createObjectStore(CALIBRATIONS);
     };
     request.onsuccess = () => {
       request.result.onversionchange = () => request.result.close();
@@ -51,7 +56,7 @@ function openHistory(): Promise<IDBDatabase> {
 async function transact<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore, references: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   const db = await openHistory();
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE, REFERENCES], mode);
+    const transaction = db.transaction([STORE, REFERENCES, CALIBRATIONS], mode);
     const request = run(transaction.objectStore(STORE), transaction.objectStore(REFERENCES));
     transaction.oncomplete = () => { db.close(); resolve(request.result); };
     transaction.onerror = () => { db.close(); reject(transaction.error); };
@@ -61,7 +66,12 @@ async function transact<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore
 
 export async function listHistory(): Promise<HistoryEntry[]> {
   const files = new Map<string, File>();
+  const calibrations = new Map<string, Calibration>();
   const entries = await transact<(HistoryEntry | StoredEntry)[]>('readonly', (store, references) => {
+    const scales = store.transaction.objectStore(CALIBRATIONS);
+    const scaleKeys = scales.getAllKeys();
+    const scaleValues = scales.getAll();
+    scaleValues.onsuccess = () => scaleValues.result.forEach((scale, index) => calibrations.set(String(scaleKeys.result[index]), scale));
     const keys = references.getAllKeys();
     const values = references.getAll();
     values.onsuccess = () => values.result.forEach((file, index) => files.set(keys.result[index] as string, file));
@@ -91,15 +101,29 @@ export async function listHistory(): Promise<HistoryEntry[]> {
     const file = files.get(stored.referenceId);
     if (!file) throw new Error('Saved reference image is missing.');
     const { referenceId, ...record } = stored;
-    return { ...record, reference: { ...record.reference, file: file.name === record.reference.name ? file : new File([file], record.reference.name, { type: file.type, lastModified: file.lastModified }) } };
+    return { ...record, reference: { ...record.reference, calibration: calibrations.get(referenceId), file: file.name === record.reference.name ? file : new File([file], record.reference.name, { type: file.type, lastModified: file.lastModified }) } };
   }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 async function prepareEntry(entry: HistoryEntry): Promise<{ entry: StoredEntry; file: File }> {
-  const { file, ...reference } = entry.reference;
-  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
-  const referenceId = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  const { file, calibration, ...reference } = entry.reference;
+  const referenceId = await referenceKey(file);
   return { entry: { ...entry, reference, referenceId }, file };
+}
+
+async function referenceKey(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function loadCalibration(file: File): Promise<Calibration | null> {
+  const key = await referenceKey(file);
+  return (await transact<Calibration | undefined>('readonly', (store) => store.transaction.objectStore(CALIBRATIONS).get(key))) ?? null;
+}
+
+export async function saveCalibration(file: File, calibration: Calibration): Promise<void> {
+  const key = await referenceKey(file);
+  await transact('readwrite', (store) => store.transaction.objectStore(CALIBRATIONS).put(calibration, key));
 }
 
 function removeUnusedReference(store: IDBObjectStore, references: IDBObjectStore, referenceId: string) {
@@ -171,7 +195,7 @@ export async function importHistory(file: File): Promise<ImportSummary> {
     const bytes = Uint8Array.from(atob(match[2]), (character) => character.charCodeAt(0));
     return new File([bytes], name, { type: match[1] });
   };
-  const prepared: { entry: StoredEntry; file: File }[] = [];
+  const prepared: { entry: StoredEntry; file: File; calibration?: Calibration }[] = [];
   for (const record of data.entries) {
     if (!record || record.version !== 2 || !text(record.id) || !record.id || !text(record.projectName)
       || !record.projectName.trim() || !text(record.createdAt) || !Number.isFinite(Date.parse(record.createdAt))
@@ -180,7 +204,8 @@ export async function importHistory(file: File): Promise<ImportSummary> {
       || !record.alignment || !['manual', 'auto'].includes(record.alignment.method)
       || !Array.isArray(record.alignment.homography) || record.alignment.homography.length !== 9
       || !record.alignment.homography.every(number) || !number(record.alignment.inlierCount)
-      || !Array.isArray(record.parts) || !record.parts.every(part)) throw new Error('Backup contains an invalid history entry.');
+      || !Array.isArray(record.parts) || !record.parts.every(part)
+      || (record.reference.calibration !== undefined && !validCalibration(record.reference.calibration, record.reference.width, record.reference.height))) throw new Error('Backup contains an invalid history entry.');
     const entry: HistoryEntry = {
       id: record.id, version: 2, projectName: record.projectName, createdAt: record.createdAt, note: record.note,
       reference: { name: record.reference.name, width: record.reference.width, height: record.reference.height,
@@ -191,7 +216,7 @@ export async function importHistory(file: File): Promise<ImportSummary> {
       parts: record.parts.map((item: SavedPart) => ({ id: item.id, name: item.name, note: item.note, thumbnail: item.thumbnail,
         region: { x: item.region.x, y: item.region.y, width: item.region.width, height: item.region.height } }))
     };
-    prepared.push(await prepareEntry(entry));
+    prepared.push({ ...await prepareEntry(entry), calibration: record.reference.calibration });
   }
   const summary: ImportSummary = {
     imported: { projects: 0, entries: 0, parts: 0 }, skipped: { projects: 0, entries: 0, parts: 0 }
@@ -203,7 +228,12 @@ export async function importHistory(file: File): Promise<ImportSummary> {
       const projectKey = (entry: HistoryEntry | StoredEntry) => JSON.stringify([entry.projectName, entry.reference.name]);
       const projects = new Set(all.result.map(projectKey));
       const seenProjects = new Set<string>();
-      for (const { entry, file } of prepared) {
+      for (const { entry, file, calibration } of prepared) {
+        if (calibration) {
+          const scales = store.transaction.objectStore(CALIBRATIONS);
+          const existingScale = scales.getKey(entry.referenceId);
+          existingScale.onsuccess = () => { if (existingScale.result === undefined) scales.put(calibration, entry.referenceId); };
+        }
         const existing = entries.get(entry.id);
         const key = projectKey(existing ?? entry);
         if (!seenProjects.has(key)) {

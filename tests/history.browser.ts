@@ -1,4 +1,4 @@
-import { deleteHistory, exportHistory, importHistory, listHistory, saveHistory, type HistoryEntry } from '../src/lib/history';
+import { deleteHistory, exportHistory, importHistory, listHistory, loadCalibration, saveCalibration, saveHistory, type HistoryEntry } from '../src/lib/history';
 
 // Run in a disposable browser session against Vite:
 // await (await import('/tests/history.browser.ts')).testHistoryStorage()
@@ -45,7 +45,7 @@ export async function testHistoryStorage(): Promise<string> {
   async function inspect(expectedEntries: number, expectedReferences: number) {
     const db = await request(indexedDB.open(database));
     try {
-      check(db.version === 3, 'Database upgraded to version 3');
+      check(db.version === 4, 'Database upgraded to version 4');
       const tx = db.transaction(['entries', 'references']);
       const done = complete(tx);
       const records = request(tx.objectStore('entries').getAll());
@@ -75,6 +75,13 @@ export async function testHistoryStorage(): Promise<string> {
   check(restored.find((record) => record.id === '4')?.reference.file.name === 'renamed.png', 'Reference filename preserved after deduplication');
   check(restored.find((record) => record.id === '4')?.note === 'Updated note', 'Entry updates preserved');
 
+  const calibration = { points: [{ x: 10, y: 20 }, { x: 210, y: 120 }] as [{ x: number; y: number }, { x: number; y: number }], horizontal: 2, vertical: 3, unit: 'cm' };
+  await saveCalibration(reference, calibration);
+  check(JSON.stringify(await loadCalibration(renamed.reference.file)) === JSON.stringify(calibration), 'Renamed identical references share calibration');
+  check(await loadCalibration(differentReference) === null, 'Same filename with different contents does not share calibration');
+  restored = await listHistory();
+  check(restored.filter((record) => record.id !== '3').every((record) => record.reference.calibration?.vertical === 3), 'All entries expose the one full-reference calibration');
+
   // Capture the download without depending on browser download configuration.
   const createURL = URL.createObjectURL;
   const click = HTMLAnchorElement.prototype.click;
@@ -86,6 +93,7 @@ export async function testHistoryStorage(): Promise<string> {
     const data = JSON.parse(await exported!.text());
     check(data.version === 2 && data.entries.length === 5, 'Export format unchanged');
     check(data.entries.every((record: any) => record.reference.file.startsWith('data:image/png;base64,') && record.source.file.startsWith('data:image/png;base64,') && !('referenceId' in record)), 'Export includes both files, not internal storage pointers');
+    check(data.entries.find((record: HistoryEntry) => record.id === '1').reference.calibration.horizontal === 2, 'Export includes reference calibration');
   } finally {
     URL.createObjectURL = createURL;
     HTMLAnchorElement.prototype.click = click;
@@ -139,7 +147,15 @@ export async function testHistoryStorage(): Promise<string> {
   await inspect(0, 0);
 
   // Import the actual export, then change local records before importing it again.
+  const scaleDB = await request(indexedDB.open(database));
+  const scaleTx = scaleDB.transaction('calibrations', 'readwrite');
+  const scaleDone = complete(scaleTx);
+  scaleTx.objectStore('calibrations').clear();
+  await scaleDone;
+  scaleDB.close();
   await importHistory(new File([await exported!.text()], 'backup.json'));
+  check(JSON.stringify(await loadCalibration(reference)) === JSON.stringify(calibration), 'Import restores calibration');
+  await saveCalibration(reference, { ...calibration, horizontal: 7 });
   await inspect(5, 2);
   restored = await listHistory();
   check(await restored.find((record) => record.id === '3')!.reference.file.text() === 'reference B', 'Import restores distinct reference bytes');
@@ -155,6 +171,7 @@ export async function testHistoryStorage(): Promise<string> {
   const fresh = { ...backup.entries.find((record: HistoryEntry) => record.id === '3'), id: '8', projectName: 'New project' };
   const input = new File([JSON.stringify({ version: 2, entries: [...backup.entries, fresh, fresh] })], 'backup.json');
   const summary = await importHistory(input);
+  check((await loadCalibration(reference))?.horizontal === 7, 'Import does not overwrite newer local calibration');
   // Removing entry 4 also removed the only project using renamed.png.
   check(JSON.stringify(summary) === JSON.stringify({ imported: { projects: 2, entries: 3, parts: 3 }, skipped: { projects: 1, entries: 4, parts: 4 } }), `Import counts new projects, entries and parts, including duplicate IDs: ${JSON.stringify(summary)}`);
   await inspect(6, 2);
@@ -169,7 +186,8 @@ export async function testHistoryStorage(): Promise<string> {
     && races.reduce((total, result) => total + result.imported.parts, 0) === 1, 'Concurrent new imports insert exactly once');
   for (const invalid of ['{', JSON.stringify({ version: 1, entries: [] }), JSON.stringify({ version: 2, entries: [
     { ...fresh, id: 'must-not-save' }, { ...fresh, id: 'bad', source: { ...fresh.source, file: 'https://example.com/image.png' } }
-  ] }), JSON.stringify({ version: 2, entries: [{ ...fresh, alignment: { ...fresh.alignment, homography: [1] } }] })]) {
+  ] }), JSON.stringify({ version: 2, entries: [{ ...fresh, alignment: { ...fresh.alignment, homography: [1] } }] }),
+  JSON.stringify({ version: 2, entries: [{ ...fresh, reference: { ...fresh.reference, calibration: { ...calibration, horizontal: 0 } } }] })]) {
     let rejected = false;
     try { await importHistory(new File([invalid], 'invalid.json')); }
     catch { rejected = true; }
@@ -178,5 +196,5 @@ export async function testHistoryStorage(): Promise<string> {
   }
   for (const record of await listHistory()) await deleteHistory(record.id);
   await inspect(0, 0);
-  return 'PASS: migration, reference deduplication, export/import round-trip, non-overwriting entry/part merges, summary counts, repeated/concurrent imports, invalid-backup atomicity, and reference cleanup';
+  return 'PASS: migration, reference deduplication, shared calibration persistence, calibration export/import and local overwrite protection, non-overwriting entry/part merges, summary counts, repeated/concurrent imports, invalid-backup atomicity, and reference cleanup';
 }

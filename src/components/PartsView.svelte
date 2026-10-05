@@ -4,12 +4,13 @@
   import type { Region } from '../lib/region';
   import type { SavedPart } from '../lib/history';
 
-  let { reference, aligned, region, onback, onnewregion, parts = [], selectedPart = null, onprevious, onnext, onsave }: {
+  let { reference, aligned, region, onback, onnewregion, onmeasure, parts = [], selectedPart = null, onprevious, onnext, onsave }: {
     reference: HTMLImageElement;
     aligned: ImageData;
     region: Region;
     onback: () => void;
     onnewregion: () => void;
+    onmeasure: () => void;
     parts?: SavedPart[];
     selectedPart?: SavedPart | null;
     onprevious?: () => void;
@@ -73,6 +74,7 @@
     <button class="icon-button" aria-label="Back to whole image" title="Whole image" onclick={onback}>
       <Icon name="back" />
     </button>
+    <button class="icon-button" aria-label="Measure reference" title="Measure reference part" onclick={onmeasure}><Icon name="measure" /></button>
     <div class="view-toggle">
       <button class="icon-button" aria-label="Side by side" title="Side by side" aria-pressed={mode === 'side-by-side'} onclick={() => { stop(); mode = 'side-by-side'; }}>
         <Icon name="side-by-side" />
