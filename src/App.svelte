@@ -55,6 +55,12 @@
   let currentEntry: HistoryEntry | null = $state(null);
   let selectedPartId = $state('');
   let savePanel = $state(false);
+  let moreOpen = $state(false);
+  let moreButton: HTMLButtonElement | undefined = $state();
+  let moreMenu: HTMLDivElement | undefined = $state();
+  let menuOpensRight = $state(false);
+  let replaceRefInput: HTMLInputElement | undefined = $state();
+  let replaceSrcInput: HTMLInputElement | undefined = $state();
   let savingPart = $state(false);
   let saveDialog: HTMLDivElement = $state()!;
   let returnFocus: HTMLElement | null = null;
@@ -85,6 +91,18 @@
   let selectedPartIndex = $derived(savedParts.findIndex((part) => part.id === selectedPartId));
   let selectedPart = $derived(savedParts[selectedPartIndex] ?? null);
   let matchingProjects = $derived([...new Set(historyEntries.filter((entry) => entry.reference.name === refFile?.name).map((entry) => entry.projectName))]);
+  let view = $derived<'compare' | 'measure' | 'history'>(historyOpen ? 'history' : measuring && refImg ? 'measure' : 'compare');
+  let editingAnchors = $derived(comparisonMode === 'manual' && manualEditing);
+  let savedHere = $derived(!!currentEntry && currentEntry.alignment.method === comparisonMode);
+  let canSelectParts = $derived(!!activeResult && comparisonMode !== 'visual');
+  let nextHint = $derived.by(() => {
+    if (processingMode) return processingMode === 'auto' ? 'Finding matching features in both images…' : 'Applying your anchor points…';
+    if (comparisonMode === 'visual') return 'Showing the originals. Align them — automatically or with anchor points — to overlay accurately and compare parts.';
+    if (!activeResult) return comparisonMode === 'auto' ? 'Automatic alignment did not find a match. Try Manual align with anchor points.' : 'Apply at least four anchor pairs to align.';
+    if (viewMode === 'overlay') return 'Drag the opacity slider or press Play to flick between reference and source. Switch to side by side to select a part.';
+    if (!selectedRegion) return 'Drag a rectangle on the reference to select a part you want to study closely.';
+    return 'Part selected — open Compare parts to study it, or drag again to change the selection.';
+  });
   let runtimeLabel = $derived(
     cvState === 'ready' ? 'OpenCV ready' : cvState === 'loading' ? 'Preparing OpenCV' : cvState === 'error' ? 'OpenCV needs retry' : 'OpenCV pending'
   );
@@ -130,17 +148,89 @@
     window.scrollTo(0, 0);
   }
 
-  async function closeMeasurement() {
+  async function closeMeasurement(focus = true) {
     measuring = false;
     historyEntries = await listHistory();
     await tick();
-    document.querySelector<HTMLButtonElement>('[aria-label="Measure reference"]')?.focus();
+    if (focus) document.querySelector<HTMLButtonElement>(showingParts ? '[data-focus="measure-part"]' : '#nav-measure')?.focus();
   }
 
   async function closeParts() {
     showingParts = false;
     await tick();
-    document.querySelector<HTMLButtonElement>('[aria-label="Compare parts"]')?.focus();
+    document.querySelector<HTMLButtonElement>('[data-focus="compare-parts"]')?.focus();
+  }
+
+  function goCompare() {
+    historyOpen = false;
+    if (measuring) void closeMeasurement(false).catch((error) => errorMsg = error.message);
+  }
+
+  async function goMeasure() {
+    historyOpen = false;
+    if (!refImg) {
+      measuring = false;
+      await tick();
+      document.querySelector<HTMLInputElement>('[aria-label="Reference upload"] input')?.focus();
+      return;
+    }
+    if (!measuring) openMeasurement(showingParts ? selectedRegion : null);
+  }
+
+  function goHistory() {
+    historyOpen = true;
+    window.scrollTo(0, 0);
+  }
+
+  function chooseAlignment(mode: ComparisonMode) {
+    if (processingMode) return;
+    if (mode === 'visual') { selectMode('visual'); return; }
+    if (mode === 'auto') {
+      selectMode('auto');
+      if (!autoResult) void processImages('auto');
+      return;
+    }
+    selectMode('manual');
+    manualEditing = !manualResult;
+  }
+
+  function cancelAnchors() {
+    if (manualResult) manualEditing = false;
+    else selectMode('visual');
+  }
+
+  async function toggleMore() {
+    moreOpen = !moreOpen;
+    if (moreOpen) {
+      menuOpensRight = (moreButton?.getBoundingClientRect().left ?? Infinity) < 260;
+      await tick();
+      moreMenu?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    }
+  }
+
+  function closeMore(focus = true) {
+    if (!moreOpen) return;
+    moreOpen = false;
+    if (focus) moreButton?.focus();
+  }
+
+  function menuKeydown(event: KeyboardEvent) {
+    const items = [...(moreMenu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    if (event.key === 'Escape') { event.preventDefault(); closeMore(); }
+    else if (event.key === 'Tab') closeMore(false);
+    else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      items[(index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      (event.key === 'Home' ? items[0] : items.at(-1))?.focus();
+    }
+  }
+
+  function windowPointerDown(event: PointerEvent) {
+    const target = event.target as Node;
+    if (moreOpen && !moreMenu?.contains(target) && !moreButton?.contains(target)) closeMore(false);
   }
 
   function openSavedPart(part: SavedPart) {
@@ -202,7 +292,9 @@
   }
 
   function handleCompactFile(event: Event, side: 'ref' | 'src') {
-    const file = (event.currentTarget as HTMLInputElement).files?.[0];
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
     if (file?.type.startsWith('image/')) loadSelectedImage(file, side);
   }
 
@@ -586,55 +678,88 @@
   }
 </script>
 
-<header class="app-header">
-  <h1>Compare Sketch</h1>
-  {#if historyOpen}
-    <button class="secondary-btn icon-tool" aria-label="Back to comparison" title="Back to comparison" onclick={() => historyOpen = false}><Icon name="back" /></button>
-    <input type="file" accept=".json,application/json" aria-label="Import backup file" bind:this={importInput} onchange={uploadHistory} hidden />
-    <button class="secondary-btn icon-tool" aria-label="Import data" title={importing ? 'Importing…' : 'Import a JSON backup — existing data is kept'} onclick={() => importInput.click()} disabled={importing || exporting}><Icon name="import" /></button>
-    <span title={exporting ? 'Exporting…' : 'Export all data — images, parts, alignment, and notes'}><button class="secondary-btn icon-tool" aria-label="Export all data" onclick={downloadHistory} disabled={exporting || importing || !historyEntries.length}><Icon name="export" /></button></span>
-  {:else if comparisonMode === 'manual' && manualEditing}<button class="secondary-btn icon-tool" aria-label="Cancel anchors" title="Cancel anchors" onclick={() => selectMode('visual')}><Icon name="back" /></button>
-  {/if}
-  <div class="header-actions">
+<svelte:window onpointerdown={windowPointerDown} />
+
+<header class="app-bar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"><Icon name="logo" size={20} /></span>
+    <h1>Compare Sketch</h1>
+  </div>
+  <nav class="primary-nav segmented" aria-label="Main">
+    <button aria-current={view === 'compare' ? 'page' : undefined} onclick={goCompare} title="Compare your sketch with the reference">
+      <Icon name="compare" /><span class="nav-label">Compare</span>
+    </button>
+    <button id="nav-measure" aria-current={view === 'measure' ? 'page' : undefined} aria-disabled={!refImg} onclick={() => void goMeasure()}
+      title={refImg ? (showingParts ? 'Measure distances in this part of the reference' : 'Measure distances on the reference') : 'Add a reference image to measure it'}>
+      <Icon name="measure" /><span class="nav-label">Measure</span>
+    </button>
+    <button aria-current={view === 'history' ? 'page' : undefined} onclick={goHistory} title="Saved projects, comparisons, and parts">
+      <Icon name="history" /><span class="nav-label">History</span>
+    </button>
+  </nav>
+  <div class="app-status">
     <StorageStatus entries={historyEntries} />
-    {#if !historyOpen && !(comparisonMode === 'manual' && manualEditing && refImg && srcImg)}<button class="secondary-btn icon-tool" aria-label="History" title="History" onclick={() => historyOpen = true}><Icon name="history" /></button>{/if}
     <ThemeSelect />
-    <button class="runtime-pill" class:ready={cvState === 'ready'} class:error={cvState === 'error'} onclick={() => { if (cvState === 'error') void loadCv(); }} aria-label={cvState === 'error' ? 'OpenCV failed. Retry' : runtimeLabel} title={cvState === 'error' ? 'OpenCV failed. Click to retry' : runtimeLabel}>
+    <button class="runtime-pill" class:ready={cvState === 'ready'} class:error={cvState === 'error'} onclick={() => { if (cvState === 'error') void loadCv(); }}
+      aria-label={cvState === 'error' ? 'OpenCV failed. Retry' : runtimeLabel}
+      title={cvState === 'error' ? 'Image aligner failed to load. Click to retry' : cvState === 'ready' ? 'Image aligner ready' : 'Loading the image aligner…'}>
       <span class="runtime-dot"></span>
+      {#if cvState === 'error'}<span class="runtime-text">Retry</span>{:else if cvState !== 'ready'}<span class="runtime-text">Loading</span>{/if}
     </button>
   </div>
 </header>
 
-<main>
+<main class="page">
   {#if historyOpen}
-    <div class="history-intro"><h2>History</h2><p>All data — images, parts, alignment — is stored in this browser.</p></div>
+    <section class="page-head">
+      <div>
+        <h2>History</h2>
+        <p>Projects, comparisons, and saved parts with notes — stored only in this browser.</p>
+      </div>
+      <div class="toolbar">
+        <input type="file" accept=".json,application/json" aria-label="Import backup file" bind:this={importInput} onchange={uploadHistory} hidden />
+        <button class="btn" aria-label="Import data" title={importing ? 'Importing…' : 'Import a JSON backup — existing data is kept'} onclick={() => importInput.click()} disabled={importing || exporting}><Icon name="import" /><span>Import</span></button>
+        <span title={exporting ? 'Exporting…' : 'Export all data — images, parts, alignment, and notes'}><button class="btn" aria-label="Export all data" onclick={downloadHistory} disabled={exporting || importing || !historyEntries.length}><Icon name="export" /><span>Export all</span></button></span>
+      </div>
+    </section>
     <div role="status" aria-live="polite">
-      {#if importing}<p>Importing backup…</p>
+      {#if importing}<p class="notice">Importing backup…</p>
       {:else if importSummary}
-        <p><strong>Import complete.</strong> Imported: {importSummary.imported.projects} projects, {importSummary.imported.entries} entries, {importSummary.imported.parts} parts.<br />
+        <p class="notice"><strong>Import complete.</strong> Imported: {importSummary.imported.projects} projects, {importSummary.imported.entries} entries, {importSummary.imported.parts} parts.<br />
           Already existed (kept): {importSummary.skipped.projects} projects, {importSummary.skipped.entries} entries, {importSummary.skipped.parts} parts.</p>
       {/if}
     </div>
-    {#if errorMsg}<p role="alert">{errorMsg}</p>{/if}
+    {#if errorMsg}<p class="notice error" role="alert">{errorMsg}</p>{/if}
     <HistoryView entries={historyEntries} onopen={openHistoryEntry} oncreate={startProjectEntry} ondelete={removeHistoryEntry} onstart={() => historyOpen = false} />
   {:else if measuring && refImg && refFile}
     <MeasureView image={refImg} file={refFile} region={measurementRegion} onback={() => { void closeMeasurement().catch((error) => errorMsg = error.message); }} />
   {:else if !refImg || !srcImg}
-    <section class="upload-section">
-      <div class="intro">
-        <h2>See what changed.</h2>
-        <p>Compare two sketches, one detail at a time.</p>
+    <section class="upload">
+      <div class="hero">
+        <p class="eyebrow">A studio companion for drawing</p>
+        <h2>Check your drawing against its reference.</h2>
+        <p>Line up your sketch with the reference, study details side by side, keep notes, and measure proportions to carry back to the paper.</p>
       </div>
       <div class="upload-grid">
-        <ImageDrop label="Reference" description="Original sketch" previewUrl={refUrl} file={refFile} onselect={(file) => loadSelectedImage(file, 'ref')} />
-        <ImageDrop label="Source" description="Sketch with changes" previewUrl={srcUrl} file={srcFile} onselect={(file) => loadSelectedImage(file, 'src')} />
+        <ImageDrop step={1} tone="reference" label="Reference" description="The image or drawing you are working from" previewUrl={refUrl} file={refFile} onselect={(file) => loadSelectedImage(file, 'ref')} />
+        <ImageDrop step={2} tone="source" label="Source" description="Your drawing, to compare against the reference" previewUrl={srcUrl} file={srcFile} onselect={(file) => loadSelectedImage(file, 'src')} />
       </div>
       <div class="upload-footer">
-        <span>{selectedCount} of 2 selected</span><span aria-hidden="true">│</span>
-        <button class="text-btn" onclick={clearAll} disabled={!refFile && !srcFile}>Reset</button>
-        {#if refImg}<button class="secondary-btn icon-tool" aria-label="Measure reference" title="Measure reference" onclick={() => openMeasurement()}><Icon name="measure" /></button>{/if}
+        <span class="progress" aria-label="{selectedCount} of 2 images selected">
+          <span class="progress-dots" aria-hidden="true"><span class:done={!!refImg}></span><span class:done={!!srcImg}></span></span>
+          {selectedCount} of 2 selected
+        </span>
+        {#if refImg}
+          <button class="btn accent-outline" aria-label="Measure reference" title="Measure the reference now — no source needed" onclick={() => openMeasurement()}><Icon name="measure" />Measure reference</button>
+        {/if}
+        <button class="btn quiet" onclick={clearAll} disabled={!refFile && !srcFile}>Reset</button>
       </div>
-      <p class="privacy-note">Images stay in this browser.</p>
+      <ul class="features" aria-label="What you can do">
+        <li><span class="feature-icon"><Icon name="overlay" /></span><div><strong>Compare</strong><p>Side by side, stacked, or overlaid. Align automatically or with your own anchor points.</p></div></li>
+        <li><span class="feature-icon"><Icon name="measure" /></span><div><strong>Measure</strong><p>Calibrate once on a grid, then measure horizontal and vertical distances between features.</p></div></li>
+        <li><span class="feature-icon"><Icon name="note" /></span><div><strong>Keep notes</strong><p>Save parts of the drawing with notes, organised by project, to revisit later.</p></div></li>
+      </ul>
+      <p class="privacy-note"><Icon name="info" size={16} />Your images never leave this browser.</p>
     </section>
   {:else if showingParts && selectedRegion && activeResult}
     <PartsView reference={refImg} aligned={activeResult.aligned} region={selectedRegion} onback={closeParts}
@@ -642,62 +767,109 @@
       onmeasure={() => openMeasurement(selectedRegion)}
       onsave={() => showSavePanel(true)} onnewregion={() => { selectedRegion = null; void closeParts(); }} />
   {:else}
-    <section class="workspace-shell">
-      <div class="workspace-nav">
-        <div>
-          <h2>{currentEntry?.projectName ?? (comparisonMode === 'manual' && manualEditing ? 'Place matching points' : 'Compare images')}</h2>
-          {#if currentEntry && currentEntry.alignment.method === comparisonMode}<NotePreview note={currentEntry.note} />
-          {:else}<p>{comparisonMode === 'manual' && manualEditing ? 'Click the same feature on each image to pair points · Drag to refine · Arrow keys nudge' : comparisonMode === 'visual' ? 'Original images · No alignment applied' : comparisonMode === 'auto' ? 'Automatic alignment' : 'Manual alignment'}</p>{/if}
+    <section class="workspace" class:has-dock={savedParts.length > 0 && !editingAnchors}>
+      <div class="workspace-head">
+        <div class="title-row">
+          <h2>{currentEntry?.projectName ?? 'Untitled comparison'}</h2>
+          {#if processingMode}<span class="chip accent"><span class="dot"></span>Aligning…</span>
+          {:else if editingAnchors}<span class="chip accent"><span class="dot"></span>Placing anchors</span>
+          {:else if comparisonMode === 'visual'}<span class="chip">Originals</span>
+          {:else if activeResult}<span class="chip ok"><Icon name="check" size={13} />{comparisonMode === 'auto' ? 'Auto aligned' : 'Manually aligned'}</span>
+          {:else}<span class="chip">Not aligned</span>{/if}
+          {#if savedHere}<span class="chip ok"><Icon name="save" size={13} />Saved</span>{/if}
         </div>
-        <span class="method-label">{comparisonMode === 'visual' ? 'Originals' : comparisonMode === 'manual' ? 'Manual anchors' : 'Auto aligned'}</span>
+        {#if savedHere && currentEntry?.note}<div class="subline"><NotePreview note={currentEntry.note} /></div>
+        {:else}<p class="subline">{refFile?.name} <span aria-hidden="true">↔</span><span class="visually-hidden">compared with</span> {srcFile?.name}</p>{/if}
       </div>
 
-      {#if !(comparisonMode === 'manual' && manualEditing)}
-      <div class="workspace-header">
-        <div class="workspace-actions">
-          <button class="secondary-btn icon-tool" aria-label="Measure reference" title="Measure reference" onclick={() => openMeasurement()}><Icon name="measure" /></button>
-          <span title={autoResult ? 'Auto alignment complete' : 'Align automatically'}><button class="secondary-btn icon-tool" aria-label="Align automatically" disabled={!!autoResult || cvState !== 'ready' || processingMode !== null} onclick={() => { selectMode('auto'); void processImages('auto'); }}><Icon name="auto" /></button></span>
-          <span title={manualResult ? 'Manual alignment complete' : 'Align manually with anchor points'}><button class="secondary-btn icon-tool" aria-label="Align manually" disabled={!!manualResult || processingMode !== null} onclick={() => { selectMode('manual'); manualEditing = true; }}><Icon name="manual" /></button></span>
-          {#if !(comparisonMode === 'manual' && manualEditing)}
-            <div class="view-toggle" aria-label="Result display">
-              <button class="icon-tool" class:active={viewMode === 'side-by-side'} aria-pressed={viewMode === 'side-by-side'} aria-label="Side by side" title="Side by side" onclick={() => selectViewMode('side-by-side')}><Icon name="side-by-side" /></button>
-              <button class="icon-tool" class:active={viewMode === 'stacked'} aria-pressed={viewMode === 'stacked'} aria-label="Stack vertically" title="Stacked" onclick={() => selectViewMode('stacked')}><Icon name="stacked" /></button>
-              <button class="icon-tool" class:active={viewMode === 'overlay'} aria-pressed={viewMode === 'overlay'} aria-label="Overlay" title="Overlay" onclick={() => selectViewMode('overlay')}><Icon name="overlay" /></button>
+      {#if !editingAnchors}
+      <div class="workspace-toolbar toolbar" class:overlay-mode={viewMode === 'overlay'} role="toolbar" aria-label="Comparison tools">
+        <div class="segmented alignment" role="group" aria-label="Alignment" title={cvState === 'ready' ? '' : 'Automatic alignment is available once the image aligner has loaded'}>
+          <button aria-pressed={comparisonMode === 'visual'} onclick={() => chooseAlignment('visual')} disabled={processingMode !== null} title="Show the original images, without alignment">
+            <Icon name="image" /><span class="label">Originals</span>
+          </button>
+          <button aria-pressed={comparisonMode === 'auto'} onclick={() => chooseAlignment('auto')} disabled={processingMode !== null || (cvState !== 'ready' && !autoResult)}
+            title={autoResult ? 'Show the automatic alignment' : 'Align the source to the reference automatically'}>
+            <Icon name="auto" /><span class="label">{processingMode === 'auto' ? 'Aligning…' : 'Auto align'}</span>
+          </button>
+          <button aria-pressed={comparisonMode === 'manual'} onclick={() => chooseAlignment('manual')} disabled={processingMode !== null}
+            title={manualResult ? 'Show the manual alignment' : 'Align by clicking matching points on both images'}>
+            <Icon name="manual" /><span class="label">{processingMode === 'manual' ? 'Aligning…' : 'Manual align'}</span>
+          </button>
+        </div>
+        {#if comparisonMode === 'manual' && manualResult && !manualEditing}
+          <button class="btn quiet" onclick={() => manualEditing = true} title="Adjust the anchor points and re-apply"><Icon name="edit" /><span class="label">Edit anchors</span></button>
+        {/if}
+
+          <span class="tool-sep" aria-hidden="true"></span>
+          <div class="segmented icons" role="group" aria-label="Layout">
+            <button aria-pressed={viewMode === 'side-by-side'} aria-label="Side by side" title="Side by side" onclick={() => selectViewMode('side-by-side')}><Icon name="side-by-side" /></button>
+            <button aria-pressed={viewMode === 'stacked'} aria-label="Stack vertically" title="Stacked" onclick={() => selectViewMode('stacked')}><Icon name="stacked" /></button>
+            <button aria-pressed={viewMode === 'overlay'} aria-label="Overlay" title="Overlay — source on top of reference" onclick={() => selectViewMode('overlay')}><Icon name="overlay" /></button>
+          </div>
+          {#if viewMode === 'overlay'}
+            <div class="opacity-tools">
+              <button class="btn icon" aria-pressed={overlayPlaying}
+                aria-label={overlayPlaying ? 'Stop opacity animation' : 'Play opacity animation'}
+                title={overlayPlaying ? 'Stop opacity animation' : 'Play — fade between reference and source'}
+                onclick={overlayPlaying ? stopOverlayAnimation : startOverlayAnimation}>
+                <Icon name={overlayPlaying ? 'stop' : 'play'} />
+              </button>
+              <label class="opacity-control">
+                <span class="opacity-end">Ref</span>
+                <input type="range" min="0" max="1" step="0.01" bind:value={overlayOpacity} oninput={stopOverlayAnimation} aria-label="Overlay opacity" />
+                <span class="opacity-end">Source</span>
+                <output>{Math.round(overlayOpacity * 100)}%</output>
+              </label>
             </div>
-            {#if viewMode === 'overlay'}
-              <div class="opacity-tools">
-                <label class="opacity-control">
-                  <span>Opacity</span>
-                  <input type="range" min="0" max="1" step="0.01" bind:value={overlayOpacity} aria-label="Overlay opacity" />
-                  <output>{Math.round(overlayOpacity * 100)}%</output>
-                </label>
-                <button
-                  class="play-btn icon-tool"
-                  class:playing={overlayPlaying}
-                  aria-pressed={overlayPlaying}
-                  aria-label={overlayPlaying ? 'Stop opacity animation' : 'Play opacity animation'}
-                  title={overlayPlaying ? 'Stop opacity animation' : 'Play opacity animation'}
-                  onclick={overlayPlaying ? stopOverlayAnimation : startOverlayAnimation}
-                >
-                  <Icon name={overlayPlaying ? 'stop' : 'play'} />
-                </button>
+          {/if}
+          <span title="Rotate source 90° clockwise"><button class="btn icon" onclick={rotateSource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise"><Icon name="rotate" /></button></span>
+          <span class="tool-sep" aria-hidden="true"></span>
+          <span title={canSelectParts ? 'Select a new part — drag on the reference' : 'Align the images to select parts'}>
+            <button class="btn" onclick={() => { selectedRegion = null; selectViewMode(defaultViewMode()); void tick().then(() => document.querySelector<HTMLElement>('[aria-label^="Select reference rectangle"]')?.focus()); }} disabled={!canSelectParts}>
+              <Icon name="select" /><span class="label">Select part</span>
+            </button>
+          </span>
+          <span title={selectedRegion ? 'Study the selected part in detail' : 'Select a part on the reference first'}>
+            <button class="btn" class:accent-outline={!!selectedRegion} data-focus="compare-parts" onclick={compareParts} disabled={!selectedRegion || !activeResult}>
+              <Icon name="parts" /><span class="label">Compare parts</span>
+            </button>
+          </span>
+          <span class="tool-spacer"></span>
+          <span title={savedHere ? 'Comparison already saved' : activeResult && comparisonMode !== 'visual' ? 'Save this comparison to a project' : 'Align the images to save a comparison'}>
+            <button class="btn primary" aria-label="Save comparison" onclick={() => showSavePanel()} disabled={!activeResult || comparisonMode === 'visual' || savedHere || saving}>
+              <Icon name={savedHere ? 'check' : 'save'} /><span class="label" aria-hidden="true">{savedHere ? 'Saved' : 'Save'}</span>
+            </button>
+          </span>
+          <div class="menu-anchor">
+            <button class="btn icon" bind:this={moreButton} aria-label="More actions" title="More actions" aria-haspopup="menu" aria-expanded={moreOpen} onclick={() => void toggleMore()}><Icon name="more" /></button>
+            {#if moreOpen}
+              <!-- svelte-ignore a11y_interactive_supports_focus -->
+              <div class="menu popover" class:opens-right={menuOpensRight} role="menu" aria-label="More actions" tabindex="-1" bind:this={moreMenu} onkeydown={menuKeydown}>
+                <button role="menuitem" onclick={() => { closeMore(false); replaceRefInput?.click(); }}><Icon name="replace-reference" />Replace reference…</button>
+                <button role="menuitem" onclick={() => { closeMore(false); replaceSrcInput?.click(); }}><Icon name="replace-source" />Replace source…</button>
+                <span class="menu-sep" role="separator"></span>
+                <button role="menuitem" onclick={() => { closeMore(false); clearAll(); }}><Icon name="new" />New comparison</button>
               </div>
             {/if}
-          {/if}
-
-          <span title="Rotate source image 90 degrees clockwise"><button class="secondary-btn icon-tool" onclick={rotateSource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise"><Icon name="rotate" /></button></span>
-          <span title="New part — select a new region"><button class="secondary-btn icon-tool" onclick={() => { selectedRegion = null; selectViewMode(defaultViewMode()); void tick().then(() => document.querySelector<HTMLElement>('[aria-label^="Select reference rectangle"]')?.focus()); }} disabled={!activeResult} aria-label="New part"><Icon name="plus" /></button></span>
-          <span title="Compare parts"><button class="secondary-btn icon-tool" onclick={compareParts} disabled={!selectedRegion || !activeResult} aria-label="Compare parts"><Icon name="parts" /></button></span>
-          <span title={currentEntry?.alignment.method === comparisonMode ? 'Comparison already saved' : 'Save comparison'}><button class="primary-btn icon-tool" aria-label="Save comparison" onclick={() => showSavePanel()} disabled={!activeResult || currentEntry?.alignment.method === comparisonMode || saving}><Icon name="save" /></button></span>
-          <label class="secondary-btn icon-tool file-tool" title="Replace reference"><Icon name="replace-reference" /><input aria-label="Replace reference" type="file" accept="image/*" onchange={(event) => handleCompactFile(event, 'ref')} /></label>
-          <label class="secondary-btn icon-tool file-tool" title="Replace source"><Icon name="replace-source" /><input aria-label="Replace source" type="file" accept="image/*" onchange={(event) => handleCompactFile(event, 'src')} /></label>
-          <button class="secondary-btn icon-tool" aria-label="New comparison" title="New comparison" onclick={clearAll}><Icon name="new" /></button>
-        </div>
+          </div>
+          <input class="visually-hidden" tabindex="-1" bind:this={replaceRefInput} aria-label="Replace reference" type="file" accept="image/*" onchange={(event) => handleCompactFile(event, 'ref')} />
+          <input class="visually-hidden" tabindex="-1" bind:this={replaceSrcInput} aria-label="Replace source" type="file" accept="image/*" onchange={(event) => handleCompactFile(event, 'src')} />
       </div>
       {/if}
 
-      <div id="comparison-workspace" class="workspace-body" role="tabpanel">
-        {#if comparisonMode === 'manual' && manualEditing}
+      {#if errorMsg || statusMsg.toLowerCase().includes('could not')}
+        <div class="status-bar" class:error={!!errorMsg} role={errorMsg ? 'alert' : 'status'}>
+          <Icon name="info" size={16} />
+          <span>{errorMsg || statusMsg}</span>
+          {#if cvState === 'error'}<button class="btn quiet" onclick={loadCv}>Retry</button>{/if}
+        </div>
+      {:else if !editingAnchors}
+        <p class="hint next-step" aria-live="polite"><Icon name="lightbulb" size={16} /><span>{nextHint}</span></p>
+      {/if}
+
+      <div id="comparison-workspace" class="workspace-body">
+        {#if editingAnchors}
           <AnchorEditor
             {refImg}
             {srcImg}
@@ -712,6 +884,8 @@
             onselect={(id) => selectedManualAnchorId = id}
             ontogglelist={() => anchorListExpanded = !anchorListExpanded}
             onapply={() => processImages('manual')}
+            oncancel={cancelAnchors}
+            applying={processingMode === 'manual'}
             canApply={completeManualAnchors.length >= 4 && cvState === 'ready' && processingMode === null}
           />
         {:else}
@@ -731,21 +905,12 @@
         {/if}
       </div>
 
-      {#if savedParts.length && !(comparisonMode === 'manual' && manualEditing)}
+      {#if savedParts.length && !editingAnchors}
         <nav class="saved-parts-bar" aria-label="Saved part navigation">
-          <span title="Whole image — no previous part"><button class="icon-tool" aria-label="Previous part" disabled><Icon name="previous" /></button></span>
-          <span class="navigator-title">Whole image</span>
-          <span class="navigator-count">{savedParts.length} parts</span>
-          <button class="icon-tool" aria-label="Next part" title="Open first saved part" onclick={() => openSavedPart(savedParts[0])}><Icon name="next" /></button>
+          <span title="Whole image — no previous part"><button class="btn icon quiet" aria-label="Previous part" disabled><Icon name="previous" /></button></span>
+          <span class="navigator-title"><strong>Whole image</strong><small>{savedParts.length} saved {savedParts.length === 1 ? 'part' : 'parts'}</small></span>
+          <button class="btn icon quiet" aria-label="Next part" title="Open the first saved part" onclick={() => openSavedPart(savedParts[0])}><Icon name="next" /></button>
         </nav>
-      {/if}
-
-      {#if errorMsg || statusMsg.includes('could not')}
-        <div class="status-bar" class:error={!!errorMsg}>
-          <span class="status-dot"></span>
-          <span>{errorMsg || statusMsg}</span>
-          {#if cvState === 'error'}<button onclick={loadCv}>Retry</button>{/if}
-        </div>
       {/if}
     </section>
   {/if}
@@ -755,298 +920,161 @@
   <div class="modal-scrim" role="presentation">
     <div class="save-dialog" role="dialog" aria-modal="true" aria-labelledby="save-heading" tabindex="-1" bind:this={saveDialog} onkeydown={dialogKeydown}>
       <form class="save-panel" onsubmit={(event) => { event.preventDefault(); if (savingPart) void savePart(); else void saveComparison(); }}>
-        <button type="button" class="dialog-close" aria-label="Close save dialog" onclick={closeSavePanel}>×</button>
+        <button type="button" class="btn icon quiet dialog-close" aria-label="Close save dialog" onclick={closeSavePanel}><Icon name="close" /></button>
         <h2 id="save-heading">{savingPart ? 'Save this part' : 'Save comparison'}</h2>
-        <p>{savingPart ? 'Keep this detail with your saved alignment.' : 'Save this alignment and both images in this browser.'}</p>
-        {#if savingPart && currentEntry}<p>Adding to <strong>{currentEntry.projectName}</strong></p>{/if}
+        <p>{savingPart ? 'Keep this detail and your notes with the saved alignment.' : 'Save this alignment and both images in this browser.'}</p>
+        {#if savingPart && currentEntry}<p class="context"><Icon name="folder" size={16} />Adding to <strong>{currentEntry.projectName}</strong></p>{/if}
         {#if !savingPart || !currentEntry}
-          <label>Project name <input bind:value={projectName} list="matching-projects" required /></label>
+          <label>Project name <input bind:value={projectName} list="matching-projects" required placeholder="e.g. Portrait study" /></label>
           <datalist id="matching-projects">{#each matchingProjects as name}<option value={name}></option>{/each}</datalist>
-          <label>Entry note (optional) <textarea bind:value={entryNote}></textarea></label>
+          <label>Entry note <span class="optional">optional</span><textarea bind:value={entryNote} placeholder="What changed in this version?"></textarea></label>
         {/if}
         {#if savingPart}
-          <label>Part name <input bind:value={partName} required /></label>
-          <label>Part note (optional) <textarea bind:value={partNote}></textarea></label>
+          <label>Part name <input bind:value={partName} required placeholder="e.g. Left eye" /></label>
+          <label>Part note <span class="optional">optional</span><textarea bind:value={partNote} placeholder="What to fix or remember"></textarea></label>
         {/if}
-        <div class="save-actions"><button type="button" class="secondary-btn" onclick={closeSavePanel}>Cancel</button><button class="primary-btn" disabled={saving}>{saving ? 'Saving…' : savingPart ? 'Save part' : 'Save comparison'}</button></div>
         {#if errorMsg}<p class="save-error" role="alert">{errorMsg}</p>{/if}
+        <div class="save-actions"><button type="button" class="btn" onclick={closeSavePanel}>Cancel</button><button class="btn primary" disabled={saving}>{saving ? 'Saving…' : savingPart ? 'Save part' : 'Save comparison'}</button></div>
       </form>
     </div>
   </div>
 {/if}
 
 <style>
-  .app-header {
+  /* App bar */
+  .app-bar {
     align-items: center;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    padding: 1rem 2rem;
-  }
-  .header-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 0.75rem; }
-
-  h1, h2, p { margin: 0; }
-  h1 { font-size: 1.45rem; font-weight: 850; letter-spacing: -0.025em; }
-  h2 { font-size: 1.15rem; }
-
-  .runtime-pill {
-    align-items: center;
-    background: #f6f7f9;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    color: var(--muted);
-    display: inline-flex;
-    font-size: 0.76rem;
-    font-weight: 750;
-    gap: 0.45rem;
-    padding: 0.4rem 0.7rem;
-  }
-
-  .runtime-pill.ready { background: #e9f8ef; border-color: #bde8cb; color: #126b34; }
-  .runtime-pill.error { background: #fff0f0; border-color: #fecaca; color: var(--danger); }
-  .runtime-dot, .status-dot { background: currentColor; border-radius: 50%; height: 0.45rem; width: 0.45rem; }
-
-  main {
+    backdrop-filter: saturate(1.4) blur(10px);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border-bottom: 1px solid var(--hairline);
     display: grid;
-    gap: 0.85rem;
-    margin: 0 auto;
-    max-width: 1680px;
-    padding: 1rem 1.25rem 1.5rem;
+    gap: 12px;
+    grid-template-columns: 1fr auto 1fr;
+    min-height: var(--app-bar-height);
+    padding: 10px max(24px, env(safe-area-inset-right)) 10px max(24px, env(safe-area-inset-left));
+    position: sticky;
+    top: 0;
+    z-index: 30;
   }
-
-  .upload-section, .workspace-shell {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-  }
-
-  .upload-section { margin: 5vh auto 0; max-width: 1080px; padding: 1.25rem; width: 100%; }
-  .intro { margin-bottom: 1.25rem; }
-  .intro h2 { font-size: 1.5rem; margin-top: 0.25rem; }
-  .intro > p:last-child { color: var(--muted); font-size: 0.88rem; margin-top: 0.35rem; }
-  .upload-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .upload-footer { align-items: center; color: var(--muted); display: flex; font-size: 0.78rem; justify-content: space-between; padding-top: 1rem; }
-
-  .text-btn {
-    background: transparent;
-    border: 0;
-    color: var(--accent);
-    cursor: pointer;
-    font-size: 0.74rem;
-    font-weight: 800;
-    padding: 0.5rem;
-    position: relative;
-  }
-  .text-btn:disabled { cursor: not-allowed; opacity: 0.45; }
-
-  .workspace-shell { overflow: visible; }
-  .workspace-nav, .workspace-header {
-    align-items: center;
-    display: flex;
-    gap: 1rem;
-    justify-content: space-between;
-    padding: 0.85rem 1rem;
-  }
-  .workspace-nav { border-bottom: 1px solid var(--border); }
-  .workspace-nav > div:first-child p { color: var(--muted); font-size: 0.76rem; margin-top: 0.2rem; }
-  .workspace-header { background: #fbfcfd; border-bottom: 1px solid var(--border); }
-  .workspace-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: flex-end; }
-
-  .primary-btn, .secondary-btn {
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.78rem;
-    font-weight: 850;
-    min-height: 2.35rem;
-    padding: 0.5rem 0.8rem;
-  }
-  .primary-btn { background: var(--accent); border: 1px solid var(--accent); color: #fff; }
-  .primary-btn { align-items: center; display: inline-flex; gap: 0.45rem; justify-content: center; }
-  .secondary-btn { background: #fff; border: 1px solid var(--border); color: var(--text); }
-  .primary-btn:disabled { cursor: not-allowed; opacity: 0.5; }
-  .secondary-btn:disabled { background: #f1f3f5; color: var(--muted); cursor: not-allowed; opacity: 0.65; }
-
-  .view-toggle { background: var(--control-bg); border: 1px solid var(--border); border-radius: 7px; display: flex; padding: 0.18rem; }
-  .view-toggle button { background: transparent; border: 0; border-radius: 5px; color: var(--muted); cursor: pointer; font-size: 0.72rem; font-weight: 800; padding: 0.42rem 0.55rem; }
-  .view-toggle button.active { background: #fff; box-shadow: 0 1px 4px rgba(20, 26, 35, 0.12); color: var(--text); }
-  .opacity-tools { align-items: center; display: flex; gap: 0.45rem; }
-  .opacity-control { align-items: center; color: var(--muted); display: flex; font-size: 0.72rem; font-weight: 750; gap: 0.4rem; }
-  .opacity-control input { accent-color: var(--accent); width: 90px; }
-  .opacity-control output { color: var(--text); font-variant-numeric: tabular-nums; text-align: right; width: 2.4rem; }
-  .play-btn {
-    align-items: center;
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--accent);
-    cursor: pointer;
-    display: inline-flex;
-    font-size: 0.72rem;
-    font-weight: 850;
-    gap: 0.35rem;
-    min-height: 2.1rem;
-    padding: 0.4rem 0.6rem;
-  }
-  .play-btn:hover { background: var(--control-bg); border-color: var(--accent); }
-  .play-btn.playing { background: #fff3f3; border-color: #fecaca; color: var(--danger); }
-  .workspace-body { padding: 0.85rem; }
-  .save-panel { background: #f8fbff; border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 0.7rem; margin: 0.85rem; max-width: 600px; padding: 1rem; }
-  .save-panel p { color: var(--muted); font-size: 0.8rem; }
-  .save-panel label { display: grid; font-size: 0.8rem; font-weight: 750; gap: 0.3rem; }
-  .save-panel input, .save-panel textarea { border: 1px solid var(--border); border-radius: 5px; font: inherit; padding: 0.55rem; width: 100%; }
-  .save-panel textarea { min-height: 5rem; resize: vertical; }
-  .save-actions { display: flex; gap: 0.6rem; justify-content: flex-end; }
-  .save-panel .save-error { color: var(--danger); }
-  .status-bar { align-items: center; border-top: 1px solid var(--border); color: var(--muted); display: flex; font-size: 0.76rem; gap: 0.5rem; padding: 0.65rem 0.9rem; }
-  .status-bar.error { background: #fff5f5; color: var(--danger); }
-  .status-bar button { background: transparent; border: 0; color: currentColor; cursor: pointer; font-weight: 800; margin-left: auto; }
-
-  @media (max-width: 820px) {
-    .app-header { padding-inline: 1rem; }
-    main { padding-inline: 0.75rem; }
-    .upload-grid { grid-template-columns: 1fr; }
-    .workspace-nav, .workspace-header { align-items: stretch; flex-direction: column; }
-    .workspace-actions { justify-content: stretch; width: 100%; }
-    .workspace-actions > button, .view-toggle { flex: 1; }
-    .view-toggle button { flex: 1; }
-    .opacity-tools { justify-content: space-between; width: 100%; }
-    .opacity-control { flex: 1; }
-    .opacity-control input { flex: 1; width: auto; }
-  }
-
-  @media (max-width: 540px) {
-    .runtime-pill { font-size: 0; }
-    .runtime-dot { height: 0.6rem; width: 0.6rem; }
-    .workspace-body { padding: 0.5rem; }
-  }
-
-  .app-header { background: transparent; border: 0; padding: 1.25rem clamp(1rem, 3vw, 3rem); }
-  .app-header h1 { font-size: 1.4rem; letter-spacing: -0.03em; }
-  .header-actions { margin-left: auto; }
-  .runtime-pill, .secondary-btn { background: #fff; border: 1px solid var(--border); border-radius: 999px; box-shadow: 0 2px 12px #352b1b0b; color: var(--text); font-weight: 500; padding: 0.65rem 1rem; }
-  .runtime-pill.ready { background: #fff; border-color: var(--border); color: var(--muted); }
-  .runtime-pill.ready .runtime-dot { background: #13ad50; }
-  main { grid-template-columns: minmax(0, 1fr); max-width: 1600px; padding: 0 clamp(1rem, 3vw, 3rem) 10rem; }
-  .upload-section { background: transparent; border: 0; margin: 2rem auto 0; max-width: 1340px; padding: 0; }
-  .intro { margin: 0 auto 2.5rem; text-align: center; }
-  .intro h2 { font-size: clamp(2.5rem, 4vw, 3.7rem); line-height: 1.1; }
-  .intro > p:last-child { font-size: 1.05rem; margin-top: 0.5rem; }
-  .upload-grid { gap: 1.5rem; }
-  .upload-footer { justify-content: center; gap: 1rem; font-size: 0.9rem; padding-top: 2rem; }
-  .upload-footer .text-btn { font-size: 0.9rem; font-weight: 500; }
-  .history-intro { margin: 1.5rem 1rem 1rem; }
-  .history-intro h2 { font-size: 2.7rem; }
-  .history-intro p { color: var(--muted); margin-top: 0.2rem; }
-  .workspace-shell { display: contents; }
-  .workspace-nav { background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 25px #352b1b0a; margin: 0 auto 1.5rem; max-width: 560px; min-height: 88px; order: 0; padding: 1rem 1.4rem; width: 100%; }
-  .workspace-nav h2 { font-size: 1.8rem; }
-  .workspace-nav > div:first-child { min-width: 0; }
-  .workspace-nav > div:first-child p, .workspace-nav :global(.note) { color: var(--muted); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .method-label { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
-  .workspace-body { order: 1; padding: 0; }
-  .workspace-header { background: #fff; border: 1px solid var(--border); border-radius: 999px; bottom: max(1.5rem, env(safe-area-inset-bottom)); box-shadow: 0 10px 30px #352b1b20; left: 50%; max-width: calc(100vw - 2rem); order: 2; padding: 0.4rem; position: fixed; transform: translateX(-50%); z-index: 20; }
-  .workspace-actions { justify-content: center; flex-wrap: nowrap; }
-  .view-toggle { background: transparent; border: 0; gap: 0.25rem; }
-  .view-toggle button { border-radius: 12px; color: #384457; font-size: 1.65rem; height: 3rem; line-height: 1; min-width: 3rem; }
-  .view-toggle button.active { background: #eaf0ff; box-shadow: none; color: var(--accent); }
-  .opacity-tools { border-left: 1px solid var(--border); padding-left: 0.75rem; }
-  .opacity-control input { width: 130px; }
-  .play-btn { border-radius: 12px; font-weight: 500; min-height: 3rem; }
-  .workspace-actions > .secondary-btn { white-space: nowrap; }
-  .status-bar { background: #fff; border: 1px solid var(--border); border-radius: 999px; justify-self: center; margin-bottom: 1rem; order: 0; }
-  .modal-scrim { align-items: center; background: #161b27a6; display: flex; inset: 0; justify-content: center; padding: 1rem; position: fixed; z-index: 50; }
-  .save-dialog { background: #fff; border-radius: 18px; box-shadow: 0 24px 60px #0003; max-height: calc(100dvh - 2rem); overflow: auto; width: min(100%, 520px); }
-  .save-panel { background: transparent; border: 0; gap: 1rem; margin: 0; max-width: none; padding: 2rem; position: relative; }
-  .save-panel h2 { font-size: 2rem; }
-  .save-panel input, .save-panel textarea { border-radius: 8px; }
-  .dialog-close { background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 1.6rem; position: absolute; right: 1.5rem; top: 1.2rem; }
-  @media (max-width: 820px) {
-    .workspace-nav { align-items: center; flex-direction: row; }
-    .workspace-header { flex-direction: row; }
-    .workspace-actions { justify-content: center; width: auto; }
-    .workspace-actions > button { flex: initial; }
-  }
-  @media (max-width: 540px) {
-    .app-header { padding: 1rem; }
-    .app-header h1 { font-size: 1.1rem; }
-    .runtime-pill { font-size: 0.75rem; }
-    .workspace-nav { margin-top: 0.5rem; }
-    .workspace-nav h2 { font-size: 1.55rem; }
-    .method-label { display: none; }
-    .workspace-header { width: max-content; }
-    .opacity-control span { display: none; }
-    .opacity-control input { width: 70px; }
-    .view-toggle button { min-width: 2.5rem; padding: 0.3rem; }
-    .modal-scrim { align-items: flex-end; padding: 0; }
-    .save-dialog { border-radius: 18px 18px 0 0; max-height: calc(100dvh - env(safe-area-inset-top) - 1rem); padding-bottom: env(safe-area-inset-bottom); width: 100%; }
-  }
-  .app-header { align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); gap: 1rem; min-height: 76px; padding: 16px max(24px, env(safe-area-inset-right)) 16px max(24px, env(safe-area-inset-left)); flex-wrap: wrap; }
-  .app-header h1 { font-size: 20px; font-weight: 600; line-height: 28px; }
-  .header-actions { gap: 8px; }
-  main { padding: 24px 24px 120px; }
-  .primary-btn, .secondary-btn, .play-btn { border-radius: 8px; min-height: 44px; font-size: 0.85rem; font-weight: 500; box-shadow: none; }
-  .primary-btn { color: var(--on-accent); }
-  .secondary-btn, .play-btn { background: var(--surface); color: var(--text); }
-  .secondary-btn:disabled { background: var(--surface); }
-  .runtime-pill, .runtime-pill.ready, .runtime-pill.error { background: transparent; border: 0; box-shadow: none; height: 44px; width: 44px; padding: 0; justify-content: center; }
-  .runtime-dot { background: var(--muted); width: 8px; height: 8px; }
+  .brand { align-items: center; display: flex; gap: 10px; min-width: 0; }
+  .brand-mark { align-items: center; background: var(--accent); border-radius: 9px; color: var(--on-accent); display: flex; flex: none; height: 32px; justify-content: center; width: 32px; }
+  h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; }
+  .primary-nav > button { min-height: 36px; padding: 0 0.9rem; }
+  .primary-nav > button[aria-disabled='true'] { opacity: 0.5; }
+  .app-status { align-items: center; display: flex; gap: 4px; justify-content: flex-end; }
+  .runtime-pill { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 10px; color: var(--ink-muted); cursor: default; display: inline-flex; font-size: 0.78rem; gap: 6px; justify-content: center; min-height: 40px; min-width: 40px; padding: 0 8px; }
+  .runtime-pill.error { background: var(--danger-tint); color: var(--danger); cursor: pointer; }
+  .runtime-dot { background: var(--warning); border-radius: 50%; height: 8px; width: 8px; }
+  .runtime-pill:not(.ready, .error) .runtime-dot { animation: pulse 1.4s ease-in-out infinite; }
   .runtime-pill.ready .runtime-dot { background: var(--ok); }
   .runtime-pill.error .runtime-dot { background: var(--danger); }
-  .privacy-note { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 24px; }
-  .intro h2 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 600; }
-  .workspace-shell { display: flex; flex-direction: column; background: transparent; border: 0; gap: 16px; }
-  .workspace-nav { background: transparent; box-shadow: none; border: 0; border-radius: 0; margin: 0; max-width: none; min-height: 0; padding: 0; width: 100%; }
-  .workspace-nav h2 { font-size: 22px; line-height: 30px; }
-  .workspace-header { position: static; transform: none; max-width: none; border-radius: 12px; background: var(--surface); box-shadow: none; padding: 8px; order: 0; width: 100%; }
-  .workspace-actions { flex-wrap: wrap; justify-content: flex-start; width: 100%; gap: 4px; }
-  .workspace-actions > span, .workspace-actions > div { flex-shrink: 0; }
-  .icon-tool { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; min-width: 44px; height: 44px; padding: 0; }
-  .workspace-actions .icon-tool { padding: 0; }
-  .file-tool { position: relative; border: 1px solid var(--border); cursor: pointer; }
-  .file-tool input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-  .file-tool:hover { background: var(--control-bg); }
-  .file-tool:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .workspace-actions > .secondary-btn { border: 1px solid var(--border); height: 44px; padding: 0; }
-  .icon-tool:disabled { background: var(--control-bg); border-color: var(--border); color: var(--muted); opacity: 0.4; cursor: not-allowed; }
-  .workspace-body { margin: 0; padding: 0; }
-  .saved-parts-bar { align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); box-shadow: var(--shadow); display: grid; grid-template-columns: 44px minmax(0, 1fr) 64px 44px; gap: 4px; left: 50%; width: 360px; max-width: calc(100vw - 32px); min-height: 60px; padding: 6px; position: fixed; transform: translateX(-50%); white-space: nowrap; z-index: 20; }
-  .saved-parts-bar button { border: 0; border-radius: 8px; background: var(--surface); color: var(--text); width: 44px; min-height: 44px; font-size: 1.45rem; cursor: pointer; }
-  .saved-parts-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .navigator-title { font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; }
-  .navigator-count { font-size: 0.8rem; font-variant-numeric: tabular-nums; text-align: center; }
-  .view-toggle { border: 1px solid var(--border); background: var(--control-bg); gap: 0; }
-  .view-toggle button { border-radius: 6px; color: var(--muted); font-size: 0.8rem; height: 44px; min-width: 44px; padding: 8px 12px; }
-  .view-toggle button.active { background: var(--accent-tint); color: var(--accent); }
-  .opacity-tools { display: contents; }
-  .opacity-control { order: 1; width: 100%; padding: 8px 4px 4px; }
-  .opacity-control input { width: min(240px, 50vw); }
-  .status-bar { background: var(--surface); border-radius: 8px; }
-  .modal-scrim { background: var(--scrim); }
-  .save-dialog { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); max-width: 480px; }
-  .save-panel h2 { font-size: 1.5rem; }
-  .save-panel input, .save-panel textarea { background: var(--paper); color: var(--text); border-radius: 8px; min-height: 44px; }
-  .dialog-close { min-width: 44px; min-height: 44px; top: 12px; right: 12px; }
-  @media (max-width: 719px) {
-    .app-header { padding: 12px 16px; gap: 8px; }
-    .header-actions { width: 100%; justify-content: flex-end; }
-    main { padding: 20px 16px 120px; }
-    .workspace-nav { align-items: flex-start; }
-    .workspace-header { width: 100%; }
-    .workspace-actions { gap: 2px; }
-    .workspace-actions .icon-tool { width: 25px; min-width: 25px; }
-    .workspace-actions:has(.opacity-tools) .icon-tool { width: 23px; min-width: 23px; }
-    .workspace-actions > button { flex: none; }
-    .view-toggle { width: auto; order: 0; }
-    .view-toggle button { flex: none; }
-    .opacity-tools { width: auto; }
-    .opacity-control span { display: inline; }
-    .modal-scrim { align-items: flex-end; padding: 0; }
-    .save-dialog { border-radius: 14px 14px 0 0; max-width: none; padding-bottom: env(safe-area-inset-bottom); width: 100%; }
-    .save-panel { padding: 24px; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  /* Page frame */
+  .page { margin: 0 auto; max-width: 1640px; padding: 20px 24px 48px; }
+  .page-head { align-items: flex-end; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; margin: 8px 0 16px; }
+  .page-head h2 { font-size: 1.75rem; line-height: 1.2; }
+  .page-head p { color: var(--ink-muted); margin-top: 4px; }
+  .notice { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); color: var(--ink-muted); font-size: 0.85rem; margin-bottom: 12px; padding: 10px 14px; }
+  .notice.error { border-color: var(--danger); color: var(--danger); }
+
+  /* Upload */
+  .upload { margin: 3vh auto 0; max-width: 1180px; }
+  .hero { margin: 0 auto 32px; max-width: 720px; text-align: center; }
+  .eyebrow { color: var(--accent); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+  .hero h2 { font-size: clamp(1.9rem, 3.6vw, 2.8rem); letter-spacing: -0.025em; line-height: 1.12; margin: 10px 0 12px; }
+  .hero p:last-child { color: var(--ink-muted); font-size: 1.02rem; line-height: 1.55; }
+  .upload-grid { display: grid; gap: 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .upload-footer { align-items: center; color: var(--ink-muted); display: flex; flex-wrap: wrap; font-size: 0.875rem; gap: 12px; justify-content: center; margin-top: 20px; }
+  .progress { align-items: center; display: inline-flex; gap: 8px; margin-right: 8px; }
+  .progress-dots { display: inline-flex; gap: 4px; }
+  .progress-dots span { background: var(--hairline); border-radius: 999px; height: 6px; transition: background 160ms var(--ease); width: 18px; }
+  .progress-dots span.done { background: var(--accent); }
+  .features { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; margin-top: 40px; }
+  .features li { align-items: flex-start; border-top: 1px solid var(--hairline); display: flex; gap: 12px; padding-top: 16px; }
+  .feature-icon { align-items: center; background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; color: var(--accent); display: flex; flex: none; height: 36px; justify-content: center; width: 36px; }
+  .features strong { display: block; font-weight: 600; margin-bottom: 2px; }
+  .features p { color: var(--ink-muted); font-size: 0.85rem; line-height: 1.5; }
+  .privacy-note { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.82rem; gap: 6px; justify-content: center; margin-top: 32px; }
+
+  /* Workspace */
+  .workspace { display: flex; flex-direction: column; gap: 12px; }
+  .workspace.has-dock { --dock-space: 72px; padding-bottom: 88px; }
+  .workspace-head { min-width: 0; }
+  .title-row { align-items: center; display: flex; flex-wrap: wrap; gap: 8px 10px; }
+  .title-row h2 { font-size: 1.4rem; line-height: 1.25; min-width: 0; overflow-wrap: anywhere; }
+  .subline { color: var(--ink-muted); font-size: 0.85rem; margin-top: 2px; max-width: 80ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .workspace-toolbar { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 8px; position: sticky; top: calc(var(--app-bar-height) + 8px); z-index: 20; }
+  .opacity-tools { align-items: center; display: flex; gap: 8px; }
+  .opacity-control { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.75rem; gap: 6px; }
+  .opacity-control input { width: 140px; }
+  .opacity-control output { color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; width: 2.6rem; }
+  .menu-anchor { position: relative; }
+  .menu { display: grid; min-width: 230px; padding: 6px; position: absolute; right: 0; top: calc(100% + 8px); z-index: 40; }
+  .menu button { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--ink); cursor: pointer; display: flex; font-size: 0.875rem; gap: 10px; min-height: 40px; padding: 0 10px; text-align: left; }
+  .menu button:is(:hover, :focus-visible) { background: var(--accent-tint); outline: none; }
+  .menu.opens-right { left: 0; right: auto; }
+  .menu-sep { background: var(--hairline); height: 1px; margin: 4px 6px; }
+  .next-step { padding: 0 4px; }
+  .status-bar { align-items: center; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); color: var(--ink-muted); display: flex; font-size: 0.85rem; gap: 8px; padding: 6px 8px 6px 12px; }
+  .status-bar.error { background: var(--danger-tint); border-color: transparent; color: var(--danger); }
+  .status-bar .btn { color: inherit; margin-left: auto; min-height: 32px; }
+  .saved-parts-bar { align-items: center; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); bottom: calc(16px + env(safe-area-inset-bottom)); box-shadow: var(--shadow-lg); display: grid; gap: 4px; grid-template-columns: 40px minmax(0, 1fr) 40px; left: 50%; max-width: calc(100vw - 32px); padding: 6px; position: fixed; transform: translateX(-50%); width: 340px; z-index: 20; }
+  .navigator-title { display: grid; line-height: 1.25; min-width: 0; text-align: center; }
+  .navigator-title strong { font-size: 0.85rem; font-weight: 600; }
+  .navigator-title small { color: var(--ink-muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+
+  /* Save dialog */
+  .modal-scrim { align-items: center; animation: fade 180ms var(--ease); background: var(--scrim); display: flex; inset: 0; justify-content: center; padding: 1rem; position: fixed; z-index: 50; }
+  .save-dialog { animation: rise 200ms var(--ease); background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); max-height: calc(100dvh - 2rem); overflow: auto; width: min(100%, 480px); }
+  .save-panel { display: grid; gap: 14px; padding: 28px; position: relative; }
+  .save-panel h2 { font-size: 1.35rem; padding-right: 40px; }
+  .save-panel > p { color: var(--ink-muted); font-size: 0.875rem; margin-top: -8px; }
+  .save-panel .context { align-items: center; background: var(--surface-2); border-radius: var(--radius-sm); color: var(--ink-muted); display: flex; gap: 8px; margin-top: 0; padding: 8px 12px; }
+  .save-panel label { display: grid; font-size: 0.85rem; font-weight: 500; gap: 6px; }
+  .optional { color: var(--ink-muted); font-size: 0.75rem; font-weight: 400; margin-left: 4px; }
+  .save-panel label:has(.optional) { grid-template-columns: auto 1fr; }
+  .save-panel label:has(.optional) textarea { grid-column: 1 / -1; }
+  .save-panel input, .save-panel textarea { background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; color: var(--ink); min-height: 42px; padding: 0.6rem 0.75rem; width: 100%; }
+  .save-panel :is(input, textarea):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); outline: none; }
+  .save-panel textarea { min-height: 88px; resize: vertical; }
+  .save-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .save-error { color: var(--danger); font-size: 0.85rem; }
+  .dialog-close { position: absolute; right: 14px; top: 14px; }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px) scale(0.985); } }
+
+  @media (max-width: 1500px) {
+    .overlay-mode :global(.btn .label) { border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
+    .overlay-mode :global(.btn:has(.label)) { padding: 0; width: 40px; }
   }
-  @media (max-width: 380px) {
-    .workspace-actions .icon-tool { width: 23px; min-width: 23px; }
-    .workspace-actions:has(.opacity-tools) .icon-tool { width: 21px; min-width: 21px; }
+  @media (max-width: 1180px) {
+    .workspace-toolbar :global(.btn .label) { border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
+    .workspace-toolbar :global(.btn:has(.label)) { padding: 0; width: 40px; }
+  }
+  @media (max-width: 899px) {
+    .app-bar { grid-template-columns: auto 1fr auto; }
+    .primary-nav { justify-self: center; }
+    .nav-label { display: none; }
+    .features { grid-template-columns: 1fr; gap: 0; }
+    .features li { padding: 14px 0; }
+  }
+  @media (max-width: 719px) {
+    .app-bar { gap: 8px; padding: 8px 12px; }
+    h1 { display: none; }
+    .page { padding: 14px 12px 40px; }
+    .upload-grid { grid-template-columns: 1fr; gap: 14px; }
+    .hero { margin-bottom: 20px; }
+    .hero p:last-child { font-size: 0.92rem; }
+    .alignment :global(.label) { border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
+    .alignment > button { padding: 0; width: 40px; }
+    .workspace-toolbar { gap: 6px; padding: 6px; top: calc(var(--app-bar-height) + 4px); }
+    .workspace-toolbar .tool-sep { display: none; }
+    .opacity-tools { order: 10; width: 100%; }
+    .opacity-control { flex: 1; }
+    .opacity-control input { flex: 1; width: auto; }
+    .modal-scrim { align-items: flex-end; padding: 0; }
+    .save-dialog { border-radius: var(--radius-lg) var(--radius-lg) 0 0; max-height: calc(100dvh - env(safe-area-inset-top) - 1rem); padding-bottom: env(safe-area-inset-bottom); width: 100%; }
+    .save-panel { padding: 22px 18px; }
   }
 </style>

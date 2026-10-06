@@ -61,11 +61,15 @@ export async function testMeasurement(): Promise<string> {
     key(endpoint, 'ArrowRight');
     await tick();
     check(target.querySelector('.results')!.textContent!.includes('60.25%'), 'Endpoint keyboard nudging updates results');
-    check(getComputedStyle(endpoint.querySelector('.marker')!).fill === 'none', 'Crosshair center has no opaque fill');
-    check(getComputedStyle(endpoint.querySelector('.marker')!).stroke === 'rgb(0, 0, 0)', 'Measurement crosshair is black on a light background');
-    check(getComputedStyle(target.querySelector('[data-endpoint="0"] .marker')!).stroke === 'rgb(255, 255, 255)', 'Measurement crosshair is white on a dark background');
+    const strokes = (marker: Element) => [...marker.querySelectorAll('.arm, .ring')].map((part) => getComputedStyle(part).stroke);
+    const ring = (marker: Element) => getComputedStyle(marker.querySelector('.ring')!).stroke;
+    const arm = (marker: Element, name: string) => getComputedStyle(marker.querySelector(`[data-arm="${name}"]`)!).stroke;
+    check([...endpoint.querySelectorAll('.marker .arm, .marker .ring')].every((part) => getComputedStyle(part).fill === 'none'), 'Crosshair center has no opaque fill');
+    check(strokes(endpoint.querySelector('.marker')!).every((stroke) => stroke === 'rgb(0, 0, 0)'), 'Measurement crosshair is black on a light background');
+    check(strokes(target.querySelector('[data-endpoint="0"] .marker')!).every((stroke) => stroke === 'rgb(255, 255, 255)'), 'Measurement crosshair is white on a dark background');
     check(getComputedStyle(endpoint.querySelector('.hit-target')!).cursor === 'grab', 'Endpoint drag area uses the grab cursor');
-    check(endpoint.querySelectorAll('.marker').length === 1 && (endpoint.querySelector('.marker') as SVGGraphicsElement).getBBox().width === 36, 'Single-stroke crosshair is 50% longer, without a duplicate halo');
+    check(endpoint.querySelectorAll('.marker').length === 1 && endpoint.querySelectorAll('.marker .arm').length === 4
+      && (endpoint.querySelector('.marker') as SVGGraphicsElement).getBBox().width === 36, 'One open crosshair with four single-stroke arms, without a duplicate halo');
     const surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
     const cursorStyle = getComputedStyle(surface).cursor;
     async function hover(x: number, y: number) {
@@ -75,15 +79,17 @@ export async function testMeasurement(): Promise<string> {
       return target.querySelector('.placement-cursor .marker')!;
     }
     let preview = await hover(200, 230);
-    check(cursorStyle === 'none' && preview.getAttribute('d') === endpoint.querySelector('.marker')!.getAttribute('d')
-      && getComputedStyle(preview).stroke === 'rgb(255, 255, 255)', 'Drawn placement cursor matches marker shape and contrasts with dark background');
+    check(cursorStyle === 'none' && preview.innerHTML.replace(/style="[^"]*"/g, '') === endpoint.querySelector('.marker')!.innerHTML.replace(/style="[^"]*"/g, '')
+      && strokes(preview).every((stroke) => stroke === 'rgb(255, 255, 255)'), 'Drawn placement cursor matches marker shape and contrasts with dark background');
     preview = await hover(450, 230);
-    check(getComputedStyle(preview).stroke === 'rgb(0, 0, 0)', 'Placement cursor switches to black on light background');
+    check(strokes(preview).every((stroke) => stroke === 'rgb(0, 0, 0)'), 'Placement cursor switches to black on light background');
     preview = await hover(360, 230);
-    check(getComputedStyle(preview).stroke === 'rgb(0, 0, 0)', 'Neutral texture retains black rather than flickering');
+    check(ring(preview) === 'rgb(0, 0, 0)', 'Neutral texture retains black rather than flickering');
     await hover(200, 230);
     preview = await hover(360, 230);
-    check(getComputedStyle(preview).stroke === 'rgb(255, 255, 255)', 'Neutral texture retains white after a dark background');
+    check(ring(preview) === 'rgb(255, 255, 255)', 'Neutral texture retains white after a dark background');
+    preview = await hover(396, 230);
+    check(arm(preview, 'left') === 'rgb(255, 255, 255)' && arm(preview, 'right') === 'rgb(0, 0, 0)', 'Each arm adapts separately where the crosshair straddles a dark/light edge');
     endpoint.querySelector('.hit-target')!.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
     await tick();
     check(!target.querySelector('.placement-cursor'), 'Placement preview hides in endpoint grab area');
@@ -104,7 +110,7 @@ export async function testMeasurement(): Promise<string> {
       const center = new DOMPoint(0, 0).matrixTransform((endpoint as SVGGraphicsElement).getScreenCTM()!);
       check(Math.abs(center.x - moved.x) < 0.01 && Math.abs(center.y - moved.y) < 0.01
         && getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible', 'Visible crosshair tracks the exact dragged point');
-      check(getComputedStyle(endpoint.querySelector('.marker')!).stroke === 'rgb(255, 255, 255)', 'Dragged crosshair switches to white over a dark background');
+      check(ring(endpoint.querySelector('.marker')!) === 'rgb(255, 255, 255)', 'Dragged crosshair switches to white over a dark background');
       surface.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientX: screen.x, clientY: screen.y }));
       await tick();
       check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible' && getComputedStyle(surface).cursor === cursorStyle, 'Marker remains visible and placement cursor returns on release');
@@ -145,7 +151,7 @@ export async function testMeasurement(): Promise<string> {
     await checkZoom('4', 400, 300);
     await place(100, 100);
     await place(500, 100);
-    check(getComputedStyle(target.querySelector('[data-endpoint="0"] .marker')!).stroke === 'rgb(255, 255, 255)', 'Reference calibration uses the same white crosshairs');
+    check(ring(target.querySelector('[data-endpoint="0"] .marker')!) === 'rgb(255, 255, 255)', 'Reference calibration uses the same white crosshairs');
     check(getComputedStyle(target.querySelector('[data-endpoint="0"] .hit-target')!).cursor === 'grab', 'Reference calibration drag area also uses the grab cursor');
     const save = target.querySelector<HTMLButtonElement>('[aria-label="Save calibration"]')!;
     check(save.disabled, 'A zero vertical span cannot calibrate both axes');
@@ -169,7 +175,7 @@ export async function testMeasurement(): Promise<string> {
     await place(200, 200);
     await place(400, 300);
     check(target.querySelectorAll('.results strong')[0].textContent === '50%' && target.querySelectorAll('.results strong')[1].textContent === '—', 'An uncalibrated axis is unavailable');
-    return 'PASS: part coordinates, independent axis ratios and paper sizes, keyboard nudging, hollow markers, zoom invariance, ephemeral measurements, persisted calibration, single-axis recalibration, and invalid-size rejection';
+    return 'PASS: per-arm adaptive crosshairs, part coordinates, independent axis ratios and paper sizes, keyboard nudging, hollow markers, zoom invariance, ephemeral measurements, persisted calibration, single-axis recalibration, and invalid-size rejection';
   } finally {
     if (component) await unmount(component);
     target.remove();

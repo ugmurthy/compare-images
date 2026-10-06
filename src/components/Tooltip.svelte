@@ -24,6 +24,8 @@
       if (target === active) return;
       hide();
       if (!target || !target.dataset.tooltip) return;
+      // Restored or programmatic focus after a pointer action should not pop a tooltip.
+      if (event.type === 'focusin' && !target.matches(':focus-visible')) return;
       active = target;
       previousDescription = target.getAttribute('aria-describedby');
       target.setAttribute('aria-describedby', [previousDescription, 'app-tooltip'].filter(Boolean).join(' '));
@@ -31,7 +33,7 @@
       await tick();
       if (active !== target) return;
       const rect = target.getBoundingClientRect();
-      left = Math.max(16, Math.min(rect.left, window.innerWidth - panel.offsetWidth - 16));
+      left = Math.max(16, Math.min(rect.left + rect.width / 2 - panel.offsetWidth / 2, window.innerWidth - panel.offsetWidth - 16));
       top = rect.bottom + 8;
       if (top + panel.offsetHeight > window.innerHeight - 16) top = Math.max(16, rect.top - panel.offsetHeight - 8);
     }
@@ -84,10 +86,9 @@
 </script>
 
 {#if text}
-  <div bind:this={panel} id="app-tooltip" class="app-tooltip" role="tooltip" style:left="{left}px" style:top="{top}px">{text}</div>
+  <div bind:this={panel} id="app-tooltip" class="tip" role="tooltip" style:left="{left}px" style:top="{top}px">{text}</div>
 {/if}
 
 <style>
-  :global(.app-tooltip) { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 16px; font-size: 0.8rem; font-weight: 400; line-height: 1.5; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
-  div { position: fixed; width: max-content; max-width: min(360px, calc(100vw - 64px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow: auto; pointer-events: none; z-index: 100; }
+  .tip { background: var(--tooltip-bg); border-radius: 8px; box-shadow: var(--shadow); box-sizing: border-box; color: var(--tooltip-ink); font-size: 0.78rem; font-weight: 500; line-height: 1.4; max-height: calc(100vh - 32px); max-width: min(320px, calc(100vw - 32px)); overflow: auto; overflow-wrap: anywhere; padding: 6px 10px; pointer-events: none; position: fixed; text-align: left; white-space: pre-wrap; width: max-content; z-index: 100; }
 </style>

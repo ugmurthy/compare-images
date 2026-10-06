@@ -36,7 +36,8 @@
 </div>
 
 <style>
-  .theme-tool { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
-  select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  .theme-tool { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; color: var(--ink-muted); }
+  .theme-tool:hover { background: var(--surface-2); color: var(--ink); }
+  select { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; opacity: 0; cursor: pointer; }
   .theme-tool:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

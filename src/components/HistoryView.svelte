@@ -71,23 +71,23 @@
   }
 </script>
 
-{#if error}<p class="error" role="alert">{error}</p>{/if}
-{#if downloadStatus}<p class="download-status" role="status">{downloadStatus}</p>{/if}
+{#if error}<p class="banner error" role="alert">{error}</p>{/if}
+{#if downloadStatus}<p class="banner download-status" role="status">{downloadStatus}</p>{/if}
 <section class="history" aria-label="History">
-  {#if !entries.length}<div class="empty"><p>No saved comparisons yet.</p><button onclick={onstart}>Start a comparison</button></div>{:else}
+  {#if !entries.length}<div class="empty"><span class="empty-icon"><Icon name="folder" size={28} /></span><h2>No saved comparisons yet</h2><p>Align a reference and your drawing, then use Save to keep it here with parts and notes.</p><button class="btn primary" onclick={onstart}>Start a comparison</button></div>{:else}
   <aside class="card" class:mobile-hidden={level !== 'projects'}>
     <h2>Projects</h2>
     {#each projects as item}
       {@const count = entries.filter((entry) => entry.projectName === item.name && entry.reference.name === item.reference).length}
       <button class:active={activeProject?.key === item.key} disabled={downloading} onclick={() => { project = item.key; selectedId = ''; level = 'entries'; downloadStatus = ''; error = ''; }}>
-        <strong>▤ &nbsp; {item.name}</strong><small>{count} {count === 1 ? 'entry' : 'entries'}</small>
+        <span class="project-icon"><Icon name="folder" size={16} /></span><span class="project-text"><strong>{item.name}</strong><small>{count} {count === 1 ? 'comparison' : 'comparisons'} · {item.reference}</small></span>
       </button>
     {/each}
   </aside>
   <div class="card entries" class:mobile-hidden={level !== 'entries'}>
-    <button class="level-back" onclick={() => level = 'projects'}>← Projects</button>
+    <button class="level-back" onclick={() => level = 'projects'}><Icon name="back" size={16} />Projects</button>
     <div class="entries-heading">
-      <h2>Entries</h2>
+      <h2>Comparisons</h2>
       <button class="download-sources" onclick={downloadSources} disabled={busy}
         aria-label={`Download aligned sources for ${activeProject?.name}`} title="Download aligned sources — newest capture first, up to 99 PNGs in a ZIP">
         <Icon name="export" />
@@ -95,7 +95,7 @@
     </div>
     <button class="new-entry" onclick={() => open(projectEntries[0], true)} disabled={busy}
       aria-label={`New comparison in ${activeProject?.name} using existing reference`} title="New comparison using existing reference">
-      <Icon name="plus" />
+      <Icon name="plus" /><span aria-hidden="true">New comparison with this reference</span>
     </button>
     {#each projectEntries as entry}
       <div class="entry-row" class:active={selected?.id === entry.id}>
@@ -110,7 +110,7 @@
           </button>
         </div>
         <button class="delete" onclick={() => remove(entry)} disabled={busy} aria-label={`Delete entry from ${new Date(entry.createdAt).toLocaleString()}`} title="Delete entry">
-          <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 3h4l1 4H9l1-4ZM6 7l1 14h10l1-14M10 11v6m4-6v6" /></svg>
+          <Icon name="trash" />
         </button>
       </div>
     {/each}
@@ -118,7 +118,7 @@
   {#if selected}
     {#key selected.id}
     <div class="card reopen" class:mobile-hidden={level !== 'detail'}>
-      <button class="level-back" onclick={() => level = 'entries'}>← Entries</button>
+      <button class="level-back" onclick={() => level = 'entries'}><Icon name="back" size={16} />Comparisons</button>
       <h2>{new Date(selected.createdAt).toLocaleString()}</h2>
       <p>{selected.alignment.method === 'auto' ? 'Auto align' : 'Manual anchors'} &nbsp; · &nbsp; {selected.reference.name} → {selected.source.name}</p>
       <NotePreview note={selected.note} />
@@ -129,8 +129,10 @@
         <h3>Saved parts ({selected.parts.length})</h3>
         <ul>{#each selected.parts as part}<li><button class="part-open" onclick={() => open()} disabled={busy} title={`${part.name}${part.note ? `\n${part.note}` : ''}\nOpen comparison`}><img class="part-thumbnail" src={part.thumbnail} alt={`Reference region: ${part.name}`} /><span>{part.name}</span></button></li>{/each}</ul>
       {/if}
-      <p>Both images are saved. Reopen without realigning.</p>
-      <button class="primary" onclick={() => open()} disabled={busy}>{opening ? 'Opening…' : 'Open comparison'}</button>
+      <div class="open-row">
+        <p>Both images are saved. Reopen without realigning.</p>
+        <button class="btn primary" onclick={() => open()} disabled={busy}>{opening ? 'Opening…' : 'Open comparison'}</button>
+      </div>
     </div>
     {/key}
   {/if}
@@ -138,57 +140,66 @@
 </section>
 
 <style>
-  .thumbnails { display: flex; gap: 0.4rem; margin: 0.5rem 0; }
-  .thumbnails img { background: #f7f6f3; border: 1px solid var(--border); border-radius: 6px; height: 60px; object-fit: contain; width: calc(50% - 0.2rem); }
-  .large img { height: 130px; }
-  .part-thumbnail { border-radius: 6px; height: 48px; object-fit: contain; width: 64px; }
-  .empty { grid-column: 1 / -1; padding: 5rem 1.5rem; text-align: center; }
-  .empty button { background: var(--surface); color: var(--text); border: 1px solid var(--hairline); border-radius: 8px; cursor: pointer; margin-top: 16px; padding: 10px 16px; min-height: 44px; }
-  .card > .level-back { display: none; }
-  .history { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(170px, 0.8fr) minmax(250px, 1.1fr) minmax(270px, 1.7fr); min-height: 580px; overflow: hidden; margin-top: 16px; }
-  .card { background: var(--surface); border-right: 1px solid var(--border); min-width: 0; padding: 1.5rem; }
+  .banner { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); font-size: 0.85rem; margin-bottom: 12px; overflow-wrap: anywhere; padding: 10px 14px; }
+  .banner.error { border-color: var(--danger); color: var(--danger); }
+  .history { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(200px, 0.8fr) minmax(270px, 1.1fr) minmax(300px, 1.6fr); min-height: 600px; overflow: hidden; }
+  .card { background: var(--surface); border-right: 1px solid var(--hairline); min-width: 0; padding: 18px; }
   .card:last-child { border-right: 0; }
-  h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1rem; }
-  h3 { font-size: 0.95rem; margin: 1.25rem 0 0.35rem; }
-  .entries-heading { align-items: center; display: flex; justify-content: space-between; margin: -0.5rem 0 0.5rem; }
+  aside.card { background: var(--surface-2); }
+  h2 { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; color: var(--ink-muted); margin: 0 0 12px; text-transform: uppercase; }
+  .reopen h2 { color: var(--ink); font-size: 1.15rem; letter-spacing: -0.01em; margin-bottom: 4px; text-transform: none; }
+  h3 { font-size: 0.85rem; font-weight: 600; margin: 18px 0 6px; }
+  p, small { color: var(--ink-muted); font-size: 0.82rem; line-height: 1.5; }
+  .card > button:not(.btn, .level-back, .image-open, .new-entry) { align-items: center; background: transparent; border: 0; border-radius: 10px; color: var(--ink); cursor: pointer; display: flex; gap: 10px; margin: 2px 0; min-height: 52px; padding: 8px 10px; text-align: left; width: 100%; }
+  .card > button:not(.btn, .level-back, .image-open, .new-entry):hover { background: var(--surface); }
+  .card > button.active { background: var(--surface); box-shadow: inset 3px 0 var(--accent), var(--shadow-sm); }
+  .project-icon { align-items: center; background: var(--accent-tint); border-radius: 8px; color: var(--accent); display: flex; flex: none; height: 32px; justify-content: center; width: 32px; }
+  .project-text { min-width: 0; }
+  .card button strong { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .entries-heading { align-items: center; display: flex; justify-content: space-between; margin-bottom: 8px; }
   .entries-heading h2 { margin: 0; }
-  .download-sources { align-items: center; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--accent); cursor: pointer; display: flex; justify-content: center; min-height: 44px; min-width: 44px; }
+  .download-sources { align-items: center; background: transparent; border: 1px solid var(--hairline); border-radius: 10px; color: var(--accent); cursor: pointer; display: flex; justify-content: center; min-height: 40px; min-width: 40px; }
   .download-sources:hover { background: var(--accent-tint); }
   .download-sources:disabled, .card > button:disabled { cursor: not-allowed; opacity: 0.5; }
-  .download-status { overflow-wrap: anywhere; }
-  p, small { color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
-  .card > button:not(.primary, .level-back, .image-open, .new-entry) { background: var(--surface); border: 0; border-radius: 10px; color: var(--text); cursor: pointer; display: block; margin: 0.6rem 0; padding: 0.75rem; text-align: left; width: 100%; min-height: 44px; }
-  .card > button.active { background: var(--accent-tint); box-shadow: inset 3px 0 var(--accent); }
-  .card button strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .card button small { display: block; overflow-wrap: anywhere; }
-  .new-entry { align-items: center; background: transparent; border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--accent); cursor: pointer; display: flex; justify-content: center; margin: 0 0 0.75rem; min-height: 100px; width: 100%; }
+  .new-entry { align-items: center; background: transparent; border: 1.5px dashed var(--dash); border-radius: var(--radius); color: var(--accent); cursor: pointer; display: flex; font-size: 0.85rem; font-weight: 500; gap: 8px; justify-content: center; margin: 0 0 10px; min-height: 52px; width: 100%; }
   .new-entry:hover { background: var(--accent-tint); border-color: var(--accent); }
   .new-entry:disabled { cursor: not-allowed; opacity: 0.5; }
-  .new-entry :global(svg) { height: 28px; width: 28px; }
-  .entry-row { align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); border-radius: 8px; display: flex; margin: 0.2rem 0; min-width: 0; }
-  .entry-row.active { background: var(--accent-tint); box-shadow: inset 3px 0 var(--accent); }
+  .entry-row { align-items: center; border: 1px solid transparent; border-radius: var(--radius); display: flex; margin: 4px 0; min-width: 0; transition: background 160ms var(--ease); }
+  .entry-row:hover { background: var(--surface-2); }
+  .entry-row.active { background: var(--accent-tint); border-color: transparent; box-shadow: inset 3px 0 var(--accent); }
   .entry-content { flex: 1; min-width: 0; }
-  .image-open.entry-preview { padding: 0.75rem 0.75rem 0; box-sizing: border-box; }
-  .entry-select { background: transparent; border: 0; box-sizing: border-box; color: var(--text); cursor: pointer; min-width: 0; padding: 0.75rem; text-align: left; width: 100%; }
+  .thumbnails { display: flex; gap: 6px; margin: 0; }
+  .thumbnails img { background: var(--canvas-bg); border: 1px solid var(--hairline); border-radius: 8px; height: 64px; object-fit: contain; width: calc(50% - 3px); }
+  .large img { height: 150px; }
+  .image-open.entry-preview { box-sizing: border-box; padding: 10px 10px 0; }
+  .entry-select { background: transparent; border: 0; box-sizing: border-box; color: var(--ink); cursor: pointer; min-width: 0; padding: 8px 10px 10px; text-align: left; width: 100%; }
+  .entry-select strong { font-weight: 600; }
   .entry-select:disabled { cursor: not-allowed; }
-  .entry-select :global(.note) { color: var(--muted); font-size: 0.78rem; margin-top: 0.3rem; }
-  .image-open, .part-open { background: transparent; border: 0; color: var(--text); cursor: pointer; padding: 0; text-align: left; width: 100%; }
-  .part-open { align-items: center; border-radius: 8px; display: flex; gap: 0.75rem; padding: 0.5rem; }
-  .part-open span { overflow-wrap: anywhere; min-width: 0; }
+  .entry-select :global(.note) { color: var(--ink-muted); font-size: 0.78rem; margin-top: 2px; }
+  .image-open, .part-open { background: transparent; border: 0; color: var(--ink); cursor: pointer; padding: 0; text-align: left; width: 100%; }
+  .reopen .image-open { margin: 14px 0 4px; }
+  .reopen :global(.note) { color: var(--ink-muted); font-size: 0.85rem; margin-top: 4px; }
+  .part-open { align-items: center; border-radius: 10px; display: flex; gap: 12px; padding: 6px; }
+  .part-open span { min-width: 0; overflow-wrap: anywhere; }
   .part-open:hover { background: var(--accent-tint); }
+  .part-thumbnail { background: var(--canvas-bg); border: 1px solid var(--hairline); border-radius: 8px; height: 48px; object-fit: contain; width: 64px; }
   .image-open:disabled, .part-open:disabled { cursor: not-allowed; opacity: 0.5; }
-  .primary { background: var(--accent); border: 0; border-radius: 8px; color: var(--on-accent); cursor: pointer; font-weight: 600; min-height: 44px; padding: 0.6rem; width: 100%; }
-  .primary:disabled { opacity: 0.5; }
-  .delete { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--danger); cursor: pointer; display: inline-flex; flex: none; justify-content: center; margin-right: 0.3rem; min-height: 44px; min-width: 44px; }
-  .delete:hover { background: var(--accent-tint); }
-  .delete:disabled { cursor: not-allowed; opacity: 0.5; }
-  .error { color: var(--danger); }
-  ul { border-bottom: 1px solid var(--border); list-style: none; padding: 0.5rem 0 1rem; }
-  li { padding: 0.25rem 0; }
+  .delete { align-items: center; background: transparent; border: 0; border-radius: 10px; color: var(--danger); cursor: pointer; display: inline-flex; flex: none; justify-content: center; margin-right: 4px; min-height: 40px; min-width: 40px; opacity: 0.7; }
+  .delete:hover { background: var(--danger-tint); opacity: 1; }
+  .delete:disabled { cursor: not-allowed; opacity: 0.4; }
+  ul { list-style: none; padding: 4px 0 0; }
+  li { padding: 2px 0; }
+  .open-row { align-items: center; border-top: 1px solid var(--hairline); display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-top: 16px; padding-top: 16px; }
+  .empty { align-items: center; display: flex; flex-direction: column; gap: 8px; grid-column: 1 / -1; justify-content: center; padding: 5rem 1.5rem; text-align: center; }
+  .empty h2 { color: var(--ink); font-size: 1.2rem; letter-spacing: -0.01em; margin: 8px 0 0; text-transform: none; }
+  .empty p { max-width: 42ch; margin-bottom: 12px; }
+  .empty-icon { align-items: center; background: var(--accent-tint); border-radius: 50%; color: var(--accent); display: flex; height: 64px; justify-content: center; width: 64px; }
+  .card > .level-back { display: none; }
   @media (max-width: 899px) {
-    .history { grid-template-columns: 1fr; }
-    .card { border-bottom: 1px solid var(--border); border-right: 0; }
+    .history { grid-template-columns: 1fr; min-height: 0; }
+    .card { border-bottom: 1px solid var(--hairline); border-right: 0; }
     .mobile-hidden { display: none; }
-    .card > .level-back { background: transparent; border: 0; color: var(--accent); cursor: pointer; display: block; margin-bottom: 1rem; padding: 0.5rem; min-height: 44px; }
+    .card > .level-back { align-items: center; background: transparent; border: 0; color: var(--accent); cursor: pointer; display: inline-flex; font-weight: 500; gap: 6px; margin: -6px 0 10px -6px; min-height: 40px; padding: 0 6px; }
   }
 </style>

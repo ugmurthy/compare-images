@@ -97,68 +97,59 @@
 <section class="compare-section">
   {#if viewMode === 'side-by-side' || viewMode === 'stacked'}
     <div class="view side-by-side" class:stacked={viewMode === 'stacked'}>
-      <div class="canvas-card">
-        <button type="button" class="canvas-label" title="Reference: {referenceName}" aria-label="Reference · {referenceName}">ⓘ</button>
-        {#if alignResult && oncompareparts}
-          <RegionSelector image={refImg} bind:region {savedRegions} />
-        {:else}
-          <canvas bind:this={refCanvas}></canvas>
-        {/if}
-      </div>
-      <div class="canvas-card">
-        <button type="button" class="canvas-label" title="Source: {sourceName} · rotated {sourceRotations * 90}°" aria-label="Source · {sourceName} · rotated {sourceRotations * 90}°">ⓘ</button>
-        <canvas bind:this={alignedCanvas}></canvas>
-      </div>
+      <figure class="frame">
+        <figcaption class="frame-caption">
+          <span class="swatch reference" aria-hidden="true"></span><strong>Reference</strong>
+          <span class="file" title={referenceName}>{referenceName}</span>
+          {#if alignResult && oncompareparts}<span class="aside select-hint">{region ? 'Part selected' : 'Drag to select a part'}</span>{/if}
+        </figcaption>
+        <div class="canvas-wrap">
+          {#if alignResult && oncompareparts}
+            <RegionSelector image={refImg} bind:region {savedRegions} />
+          {:else}
+            <canvas bind:this={refCanvas} aria-label="Reference image"></canvas>
+          {/if}
+        </div>
+      </figure>
+      <figure class="frame">
+        <figcaption class="frame-caption">
+          <span class="swatch source" aria-hidden="true"></span><strong>Source</strong>
+          <span class="file" title={sourceName}>{sourceName}</span>
+          <span class="aside">{[alignResult ? 'Aligned' : '', sourceRotations ? `Rotated ${sourceRotations * 90}°` : ''].filter(Boolean).join(' · ')}</span>
+        </figcaption>
+        <div class="canvas-wrap"><canvas bind:this={alignedCanvas} aria-label="{alignResult ? 'Aligned source' : 'Source'} image"></canvas></div>
+      </figure>
     </div>
   {:else if viewMode === 'overlay'}
     <div class="view overlay">
-      <div class="canvas-card full-width">
-        <button type="button" class="canvas-label" title={`Reference: ${referenceName}\nSource: ${sourceName}`} aria-label="Overlay · {referenceName} + {sourceName}">ⓘ</button>
-        <canvas bind:this={overlayCanvas}></canvas>
-      </div>
+      <figure class="frame">
+        <figcaption class="frame-caption">
+          <span class="swatch reference" aria-hidden="true"></span><strong>Reference</strong>
+          <span aria-hidden="true">+</span>
+          <span class="swatch source" aria-hidden="true"></span><strong>Source</strong>
+          <span class="file" title="{referenceName} + {sourceName}">{alignResult ? 'aligned overlay' : 'unaligned overlay'}</span>
+          <span class="aside tabular">Source {Math.round(overlayOpacity * 100)}%</span>
+        </figcaption>
+        <div class="canvas-wrap"><canvas bind:this={overlayCanvas} aria-label="Overlay of reference and source"></canvas></div>
+      </figure>
     </div>
   {/if}
 </section>
 
 <style>
-  .compare-section {
-    margin-top: 0;
-  }
-
-  .view {
-    display: grid;
-    gap: 0.9rem;
-  }
-
-  .side-by-side { grid-template-columns: 1fr 1fr; }
-  .side-by-side.stacked { grid-template-columns: 1fr; max-width: 900px; margin: auto; }
-
-  .canvas-card {
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    overflow: hidden;
-    position: relative;
-    background: var(--surface);
-    box-shadow: var(--shadow);
-    padding: 7px;
-  }
-
-  .canvas-card.full-width {
-    grid-column: 1 / -1;
-  }
-
-  .canvas-label { align-items: center; backdrop-filter: blur(8px); background: var(--surface-frost); border: 0; border-radius: 50%; color: var(--accent); cursor: help; display: flex; font-size: 0.8rem; height: 24px; justify-content: center; left: 12px; position: absolute; top: 12px; width: 24px; z-index: 1; }
-
-  canvas {
-    width: 100%;
-    height: min(58vh, 650px);
-    display: block;
-    background: #f7f6f3;
-    border-radius: 9px;
-    object-fit: contain;
-  }
-
+  .view { display: grid; gap: 16px; }
+  .side-by-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .side-by-side.stacked { grid-template-columns: 1fr; margin: 0 auto; max-width: 980px; width: 100%; }
+  figure { margin: 0; }
+  .canvas-wrap { background: var(--canvas-bg); padding: 8px; }
+  .canvas-wrap :global(canvas), .canvas-wrap :global(svg) { --view-height: clamp(280px, calc(100dvh - 330px - var(--dock-space, 0px)), 900px); }
+  .stacked .canvas-wrap :global(canvas), .stacked .canvas-wrap :global(svg) { --view-height: clamp(240px, 62vh, 700px); }
+  canvas { display: block; height: var(--view-height); object-fit: contain; width: 100%; }
+  .select-hint { color: var(--accent); font-weight: 500; }
+  .tabular { font-variant-numeric: tabular-nums; }
   @media (max-width: 719px) {
-    canvas { height: min(48vh, 500px); }
+    .canvas-wrap { padding: 4px; }
+    /* Follow the image's own aspect ratio on phones instead of letterboxing a fixed height. */
+    .view .canvas-wrap :global(canvas), .view .canvas-wrap :global(svg) { --view-height: auto; max-height: 64vh; }
   }
 </style>

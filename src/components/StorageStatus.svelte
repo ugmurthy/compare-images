@@ -18,7 +18,7 @@
 
 <svelte:window onfocus={refresh} />
 <div class="storage" class:open class:dismissed class:warning={level === 'warning'} class:critical={level === 'critical'}>
-  <button aria-label={estimate?.quota ? `Browser storage: ${percent}% used` : 'Storage estimate unavailable'} aria-describedby="storage-info" aria-pressed={open} onpointerenter={() => dismissed = false} onfocus={() => dismissed = false} onclick={() => { open = !open; dismissed = !open; }} onkeydown={(event) => { if (event.key === 'Escape') { open = false; dismissed = true; } }}>{estimate?.quota ? `${percent}%` : '—'}</button>
+  <button aria-label={estimate?.quota ? `Browser storage: ${percent}% used` : 'Storage estimate unavailable'} aria-describedby="storage-info" aria-pressed={open} onpointerenter={() => dismissed = false} onfocus={() => dismissed = false} onclick={() => { open = !open; dismissed = !open; }} onkeydown={(event) => { if (event.key === 'Escape') { open = false; dismissed = true; } }}><span class="meter" aria-hidden="true"><span style:width="{Math.max(estimate?.quota ? 6 : 0, Math.min(100, percent))}%"></span></span>{estimate?.quota ? `${percent}%` : '—'}</button>
   <div id="storage-info" class="storage-info app-tooltip" role="tooltip">
   {#if estimate?.quota}
     <span>Storage: {percent}% · {level === 'critical' ? 'Critical' : level === 'warning' ? 'Warning' : 'Within limits'}</span>
@@ -29,11 +29,15 @@
 </div>
 
 <style>
-  .storage { position: relative; color: var(--ok); font-size: 0.8rem; z-index: 40; }
-  button { background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; min-width: 44px; min-height: 44px; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
-  .warning { color: var(--warning); }
-  .critical { color: var(--danger); }
-  .storage-info { display: none; gap: 8px; position: fixed; margin-top: 8px; right: 16px; width: 260px; box-sizing: border-box; max-width: calc(100vw - 32px); }
+  .storage { position: relative; color: var(--ok); font-size: 0.78rem; z-index: 40; }
+  button { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 10px; color: var(--ink-muted); cursor: pointer; display: inline-flex; font: inherit; font-variant-numeric: tabular-nums; gap: 6px; min-height: 40px; min-width: 40px; padding: 0 8px; }
+  button:hover { background: var(--surface-2); }
+  .meter { background: var(--hairline); border-radius: 999px; display: inline-block; height: 6px; overflow: hidden; width: 22px; }
+  .meter span { background: currentColor; display: block; height: 100%; }
+  .storage .meter { color: var(--ok); }
+  .warning .meter, .warning button { color: var(--warning); }
+  .critical .meter, .critical button { color: var(--danger); }
+  .storage-info { display: none; gap: 6px; position: fixed; margin-top: 8px; right: 16px; width: 260px; box-sizing: border-box; max-width: calc(100vw - 32px); }
   .storage:not(.dismissed):hover .storage-info, .storage:not(.dismissed):focus-within .storage-info, .storage.open .storage-info { display: grid; }
-  small { font-size: 0.75rem; color: var(--muted); }
+  small { font-size: 0.75rem; color: var(--ink-muted); }
 </style>

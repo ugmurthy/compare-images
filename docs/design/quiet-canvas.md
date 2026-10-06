@@ -1,6 +1,36 @@
 # Quiet Canvas — Compare Sketch Style Guide
 
-## Current direction: compact workspace
+## Current direction: Studio (supersedes the compact workspace rules below where they conflict)
+
+- **Navigation:** a sticky app bar with the wordmark, a segmented **Compare | Measure | History**
+  nav (`aria-current="page"`), and quiet status controls (storage meter, theme, aligner dot that
+  only shows text while loading or failed). Measure stays visible but `aria-disabled` until a
+  reference exists; activating it then focuses the Reference drop well.
+- **Tokens and shared controls** live in `src/app.css`: `.btn` (`primary`, `quiet`,
+  `accent-outline`, `danger`, `icon`), `.segmented`, `.toolbar`, `.tool-sep`, `.chip`, `.frame`,
+  `.frame-caption`, `.hint`, `.popover`. Components keep only layout styles.
+- **Workspace toolbar** (sticky): Alignment segmented (Originals / Auto align / Manual align) ·
+  Layout segmented · overlay Play + opacity · Rotate · Select part · Compare parts · Save
+  (primary) · More menu (Replace reference, Replace source, New comparison). Labels collapse to
+  icons with tooltips below 1180px. A one-line hint below the toolbar suggests the next step.
+- **Image frames** have a caption bar outside the art: colour swatch (reference blue, source
+  terracotta), role, filename, and state (Aligned, rotation, "Drag to select a part"). No chips
+  float over the images. Frames size to the viewport on desktop and to the image's aspect ratio
+  on phones.
+- **Cursor and markers:** placement surfaces hide the system cursor and draw an open crosshair
+  (arms 5–18 px from centre, 4 px ring, 1.25 px strokes) centred exactly on the hit point. Each
+  arm and the ring pick black or white from a 3-line band of pixels beneath them, with
+  hysteresis (black > 140, white < 116 luminance). Anchor markers add a pair-coloured numbered
+  badge offset up-right so nothing covers the point. Use `src/lib/contrast.ts` and
+  `Crosshair.svelte` for any new placement surface.
+- **Manual anchors** replace the workspace toolbar with an anchor toolbar: pair-progress meter,
+  Undo, Grid, Point list, Clear, Cancel, Apply alignment. Grid settings and the point list are
+  inline panels, not floating popovers.
+- **Measure** uses a two-step side panel (1 · Reference scale, 2 · Measure) with large tabular
+  results, and labels the horizontal and vertical legs on the image. Part measurement clips the
+  image to the part so every visible pixel is measurable.
+
+## Previous direction: compact workspace
 
 The updated design retains the warm paper palette and image-first presentation,
 but replaces the floating-action layout described in the historical reference below.

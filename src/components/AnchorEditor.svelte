@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { ManualAnchor, Point } from '../lib/manualAnchors';
+  import { createSampler, crosshairShades, type CrosshairShades, type Sampler } from '../lib/contrast';
+  import Crosshair from './Crosshair.svelte';
   import Icon from './Icon.svelte';
 
   let {
@@ -16,6 +19,8 @@
     onselect,
     ontogglelist,
     onapply,
+    oncancel,
+    applying = false,
     canApply
   }: {
     refImg: HTMLImageElement | null;
@@ -31,6 +36,8 @@
     onselect: (id: number | null) => void;
     ontogglelist: () => void;
     onapply: () => void;
+    oncancel?: () => void;
+    applying?: boolean;
     canApply: boolean;
   } = $props();
 
@@ -51,6 +58,63 @@
   let refGridY = $state(0);
   let srcGridX = $state(0);
   let srcGridY = $state(0);
+  // Bumped on frame resize so marker positions and screen-sized crosshairs are recomputed.
+  let layoutVersion = $state(0);
+  let samplers = $state.raw<{ ref: Sampler | null; src: Sampler | null }>({ ref: null, src: null });
+  let markerShades = $state<Record<string, CrosshairShades>>({});
+  let hover = $state<{ side: 'ref' | 'src'; left: number; top: number; shades: CrosshairShades } | null>(null);
+
+  $effect(() => {
+    samplers = { ref: refImg ? createSampler(refImg) : null, src: srcImg ? createSampler(srcImg) : null };
+  });
+
+  $effect(() => {
+    const frames = [refFrame, srcFrame].filter(Boolean);
+    if (!frames.length) return;
+    const observer = new ResizeObserver(() => layoutVersion++);
+    frames.forEach((frame) => observer.observe(frame));
+    return () => observer.disconnect();
+  });
+
+  $effect(() => {
+    layoutVersion;
+    const next: Record<string, CrosshairShades> = {};
+    for (const anchor of anchors) {
+      for (const side of ['ref', 'src'] as const) {
+        const point = anchor[side];
+        if (!point) continue;
+        const key = `${side}-${anchor.id}`;
+        next[key] = crosshairShades(samplers[side], point, imagePerScreen(side), untrack(() => markerShades[key]));
+      }
+    }
+    markerShades = next;
+  });
+
+  function imagePerScreen(side: 'ref' | 'src') {
+    const placement = imagePlacement(side);
+    return placement ? placement.img.naturalWidth / placement.renderedWidth : 1;
+  }
+
+  function handleFrameMove(event: PointerEvent, side: 'ref' | 'src') {
+    handlePointerMove(event);
+    if (dragState || event.pointerType !== 'mouse' || (event.target as HTMLElement).closest('button')) {
+      hover = null;
+      return;
+    }
+    const placement = imagePlacement(side);
+    if (!placement) return;
+    const { rect, borderX, borderY, renderedWidth, renderedHeight, offsetX, offsetY, img } = placement;
+    const left = event.clientX - rect.left - borderX;
+    const top = event.clientY - rect.top - borderY;
+    if (left < offsetX || top < offsetY || left > offsetX + renderedWidth || top > offsetY + renderedHeight) {
+      hover = null;
+      return;
+    }
+    // The same mapping as pointFromClient, so the drawn centre is exactly where a click places the anchor.
+    const point = { x: ((left - offsetX) / renderedWidth) * img.naturalWidth, y: ((top - offsetY) / renderedHeight) * img.naturalHeight };
+    const previous = hover?.side === side ? hover.shades : undefined;
+    hover = { side, left, top, shades: crosshairShades(samplers[side], point, img.naturalWidth / renderedWidth, previous) };
+  }
 
   let completeCount = $derived(anchors.filter((anchor) => anchor.ref && anchor.src).length);
   let incompleteCount = $derived(anchors.length - completeCount);
@@ -65,9 +129,11 @@
   }
 
   function anchorColor(id: number): string {
-    const hues = [214, 16, 145, 278, 42, 184, 330, 92];
-    return `hsl(${hues[(id - 1) % hues.length]} 72% 45%)`;
+    const hues = [224, 12, 145, 278, 38, 186, 330, 92];
+    return `hsl(${hues[(id - 1) % hues.length]} 68% 44%)`;
   }
+
+  let pendingId = $derived(anchors.find((anchor) => !anchor.ref || !anchor.src)?.id ?? Math.max(0, ...anchors.map((anchor) => anchor.id)) + 1);
 
   function gridStyle(side: 'ref' | 'src'): string {
     const x = side === 'ref' ? refGridX : srcGridX;
@@ -95,9 +161,9 @@
 
   function getAnchorQuality(count: number): string {
     if (count >= 8) return 'strong manual alignment';
-    if (count >= 4) return 'manual homography ready';
+    if (count >= 4) return 'ready to apply';
     if (count > 0) return `${4 - count} more pair${4 - count === 1 ? '' : 's'} needed`;
-    return 'auto alignment will be used';
+    return 'at least 4 pairs needed';
   }
 
   function frameForSide(side: 'ref' | 'src'): HTMLDivElement {
@@ -154,6 +220,7 @@
   }
 
   function displayPoint(point: Point, side: 'ref' | 'src') {
+    layoutVersion;
     const placement = imagePlacement(side);
     if (!placement) {
       const img = imageForSide(side);
@@ -237,36 +304,97 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+{#snippet canvas(side: 'ref' | 'src')}
+  {@const img = side === 'ref' ? refImg : srcImg}
+  {@const name = side === 'ref' ? 'Reference' : 'Source'}
+  <figure class="frame">
+    <figcaption class="frame-caption">
+      <span class="swatch {side === 'ref' ? 'reference' : 'source'}" aria-hidden="true"></span><strong>{name}</strong>
+      <span class="aside">{anchors.filter((anchor) => anchor[side]).length} points</span>
+    </figcaption>
+    <div class="canvas-wrap">
+      {#if side === 'ref'}
+        <div class="anchor-frame" bind:this={refFrame} style:cursor={hover?.side === side ? 'none' : 'default'} style:--ratio={img ? img.naturalWidth / img.naturalHeight : 4 / 3}
+          onpointerdown={(event) => handleFramePointerDown(event, side)} onpointermove={(event) => handleFrameMove(event, side)}
+          onpointerup={handlePointerUp} onpointerleave={() => hover = null} role="button" tabindex="0" aria-label="Reference anchor canvas">
+          {@render layers(side, img)}
+        </div>
+      {:else}
+        <div class="anchor-frame" bind:this={srcFrame} style:cursor={hover?.side === side ? 'none' : 'default'} style:--ratio={img ? img.naturalWidth / img.naturalHeight : 4 / 3}
+          onpointerdown={(event) => handleFramePointerDown(event, side)} onpointermove={(event) => handleFrameMove(event, side)}
+          onpointerup={handlePointerUp} onpointerleave={() => hover = null} role="button" tabindex="0" aria-label="Source anchor canvas">
+          {@render layers(side, img)}
+        </div>
+      {/if}
+    </div>
+  </figure>
+{/snippet}
+
+{#snippet layers(side: 'ref' | 'src', img: HTMLImageElement | null)}
+  {#if img}
+    <img src={img.src} alt="{side === 'ref' ? 'Reference' : 'Source'} anchors" draggable="false" />
+    {#if gridVisible}<span class="visual-grid" style={gridStyle(side)}></span>{/if}
+    {#each anchors as anchor (anchor.id)}
+      {@const point = anchor[side]}
+      {#if point}
+        {@const position = displayPoint(point, side)}
+        <button
+          class="anchor-handle"
+          class:selected={selectedAnchorId === anchor.id}
+          class:pending={!anchor.ref || !anchor.src}
+          class:dragging={dragState?.id === anchor.id && dragState.side === side}
+          style:--anchor-color={anchorColor(anchor.id)}
+          style:left={position.left}
+          style:top={position.top}
+          onpointerdown={(event) => handleAnchorPointerDown(event, anchor.id, side)}
+          aria-label="{side === 'ref' ? 'Reference' : 'Source'} anchor {anchor.id}"
+        >
+          <svg class="handle-cross" viewBox="-18 -18 36 36" aria-hidden="true"><Crosshair shades={markerShades[`${side}-${anchor.id}`]} emphasis={selectedAnchorId === anchor.id} /></svg>
+          <span class="anchor-number">{anchor.id}</span>
+        </button>
+      {/if}
+    {/each}
+    {#if hover?.side === side}
+      <svg class="hover-cross" viewBox="-18 -18 36 36" style:left="{hover.left}px" style:top="{hover.top}px" aria-hidden="true"><Crosshair shades={hover.shades} /></svg>
+    {/if}
+  {/if}
+{/snippet}
+
 <section class="anchor-editor">
-  <div class="anchor-toolbar">
-    <div>
-      <h2>Place matching points</h2>
-      <p>{anchors.length} anchors · {completeCount} paired · {anchorQuality}</p>
+  <div class="anchor-toolbar toolbar" role="toolbar" aria-label="Anchor tools">
+    <div class="pair-progress" aria-live="polite">
+      <span class="pair-meter" aria-hidden="true">{#each [0, 1, 2, 3] as index}<span class:done={completeCount > index}></span>{/each}</span>
+      <span><strong>{completeCount}</strong> {completeCount === 1 ? 'pair' : 'pairs'} · {anchorQuality}</span>
     </div>
-    <div class="toolbar-actions">
-      <button class="anchor-btn" class:active={gridVisible} onclick={() => gridVisible = !gridVisible} aria-pressed={gridVisible} aria-label="Grid" title="Grid">
-        <Icon name="grid" />
+    <span class="tool-sep" aria-hidden="true"></span>
+    <button class="btn icon" onclick={onundo} disabled={anchors.length === 0} aria-label="Undo" title="Undo last point">
+      <Icon name="undo" />
+    </button>
+    <button class="btn icon" onclick={() => gridVisible = !gridVisible} aria-pressed={gridVisible} aria-label="Grid" title="Show a visual grid">
+      <Icon name="grid" />
+    </button>
+    <button class="btn icon" onclick={ontogglelist} aria-pressed={listExpanded} aria-label="Point list" title="List all points">
+      <Icon name="list" />
+    </button>
+    <button class="btn icon danger" onclick={onclear} disabled={anchors.length === 0} aria-label="Clear all" title="Remove all points">
+      <Icon name="trash" />
+    </button>
+    <span class="tool-spacer"></span>
+    {#if oncancel}<button class="btn quiet" title="Cancel anchors" onclick={oncancel}>Cancel</button>{/if}
+    <span title={`Apply ${completeCount} paired anchors — at least four required`}>
+      <button class="btn primary" aria-label="Apply manual alignment" onclick={onapply} disabled={!canApply}>
+        <Icon name="check" /><span aria-hidden="true">{applying ? 'Aligning…' : 'Apply'}<span class="long-label">{' alignment'}</span></span>
       </button>
-      <button class="anchor-btn" onclick={ontogglelist} aria-pressed={listExpanded} aria-label="Point list" title="Point list">
-        <Icon name="list" />
-      </button>
-      <button class="anchor-btn" onclick={onundo} disabled={anchors.length === 0} aria-label="Undo" title="Undo">
-        <Icon name="undo" />
-      </button>
-      <button class="anchor-btn danger" onclick={onclear} disabled={anchors.length === 0} aria-label="Clear all" title="Clear all">
-        <Icon name="clear" />
-      </button>
-      <span title={`Apply ${completeCount} paired anchors — at least four required`}><button class="anchor-btn apply" aria-label="Apply manual alignment" onclick={onapply} disabled={!canApply}><Icon name="check" /></button></span>
-    </div>
+    </span>
   </div>
 
-  <div class="placement-guide">
-    <span class="guide-crosshair" aria-hidden="true"></span>
-    <span>{placementHint}</span>
-    <span class="nudge-hint">Drag to refine · Arrow keys nudge</span>
-  </div>
+  <p class="placement-guide" aria-live="polite">
+    <span class="pair-dot" style:--anchor-color={anchorColor(pendingId)} aria-hidden="true">{pendingId}</span>
+    <span class="hint-text">{placementHint}</span>
+    <span class="nudge-hint">Drag a marker to refine · Arrow keys nudge (Shift ×10) · Delete removes</span>
+  </p>
 
-  {#if gridVisible && !listExpanded}
+  {#if gridVisible}
     <div class="grid-controls">
       <span class="control-title">Grid</span>
       <label>
@@ -275,373 +403,95 @@
       </label>
       <label>
         <span>X position</span>
-        <input
-          type="range"
-          min={-gridSpacing}
-          max={gridSpacing}
-          value={lastActiveSide === 'ref' ? refGridX : srcGridX}
-          oninput={(event) => updateGridOffset('x', Number(event.currentTarget.value))}
-        />
+        <input type="range" min={-gridSpacing} max={gridSpacing} value={lastActiveSide === 'ref' ? refGridX : srcGridX}
+          oninput={(event) => updateGridOffset('x', Number(event.currentTarget.value))} />
       </label>
       <label>
         <span>Y position</span>
-        <input
-          type="range"
-          min={-gridSpacing}
-          max={gridSpacing}
-          value={lastActiveSide === 'ref' ? refGridY : srcGridY}
-          oninput={(event) => updateGridOffset('y', Number(event.currentTarget.value))}
-        />
+        <input type="range" min={-gridSpacing} max={gridSpacing} value={lastActiveSide === 'ref' ? refGridY : srcGridY}
+          oninput={(event) => updateGridOffset('y', Number(event.currentTarget.value))} />
       </label>
       <label>
         <span>Opacity</span>
         <input type="range" min="0.1" max="0.8" step="0.05" bind:value={gridOpacity} />
       </label>
-      <button class="link-grid" class:active={gridLinked} onclick={() => gridLinked = !gridLinked} aria-pressed={gridLinked}>
-        {gridLinked ? 'Linked grids' : 'Independent grids'}
-      </button>
+      <div class="segmented" role="group" aria-label="Grid linking">
+        <button aria-pressed={gridLinked} onclick={() => gridLinked = true}>Linked</button>
+        <button aria-pressed={!gridLinked} onclick={() => gridLinked = false}>Independent</button>
+      </div>
       {#if !gridLinked}
-        <div class="grid-side" aria-label="Grid to adjust">
-          <button class:active={lastActiveSide === 'ref'} onclick={() => lastActiveSide = 'ref'}>Reference</button>
-          <button class:active={lastActiveSide === 'src'} onclick={() => lastActiveSide = 'src'}>Source</button>
+        <div class="segmented" role="group" aria-label="Grid to adjust">
+          <button aria-pressed={lastActiveSide === 'ref'} onclick={() => lastActiveSide = 'ref'}>Reference</button>
+          <button aria-pressed={lastActiveSide === 'src'} onclick={() => lastActiveSide = 'src'}>Source</button>
         </div>
       {/if}
     </div>
   {/if}
 
-  <div class="anchor-workspace">
-    <div class="anchor-image">
-      <span class="image-label">Reference</span>
-      <div
-        class="anchor-frame"
-        bind:this={refFrame}
-        onpointerdown={(event) => handleFramePointerDown(event, 'ref')}
-        onpointermove={handlePointerMove}
-        onpointerup={handlePointerUp}
-        role="button"
-        tabindex="0"
-        aria-label="Reference anchor canvas"
-      >
-        {#if refImg}
-          <img src={refImg.src} alt="Reference anchors" draggable="false" />
-          {#if gridVisible}<span class="visual-grid" style={gridStyle('ref')}></span>{/if}
-          {#each anchors as anchor}
-            {#if anchor.ref}
-              <button
-                class="anchor-handle reference"
-                class:selected={selectedAnchorId === anchor.id}
-                style:--anchor-color={anchorColor(anchor.id)}
-                style:left={displayPoint(anchor.ref, 'ref').left}
-                style:top={displayPoint(anchor.ref, 'ref').top}
-                onpointerdown={(event) => handleAnchorPointerDown(event, anchor.id, 'ref')}
-                aria-label="Reference anchor {anchor.id}"
-              >
-                <span class="anchor-number">{anchor.id}</span>
-              </button>
-            {/if}
-          {/each}
-        {/if}
-      </div>
+  {#if listExpanded}
+    <div class="anchor-list">
+      {#if anchors.length === 0}
+        <div class="empty-list">No anchor points yet. Click a feature on the reference to start.</div>
+      {:else}
+        <div class="anchor-row head" aria-hidden="true"><span>Point</span><span>Reference</span><span>Source</span><span></span></div>
+        {#each anchors as anchor}
+          <div class="anchor-row" class:selected={selectedAnchorId === anchor.id}>
+            <button class="row-select" onclick={() => onselect(anchor.id)} aria-label="Select point {anchor.id}">
+              <span class="row-dot" style:--anchor-color={anchorColor(anchor.id)}>{anchor.id}</span>
+            </button>
+            <span class:missing={!anchor.ref}>{anchor.ref ? `${anchor.ref.x.toFixed(0)}, ${anchor.ref.y.toFixed(0)}` : 'missing'}</span>
+            <span class:missing={!anchor.src}>{anchor.src ? `${anchor.src.x.toFixed(0)}, ${anchor.src.y.toFixed(0)}` : 'missing'}</span>
+            <button class="btn icon quiet danger" onclick={() => onremove(anchor.id)} aria-label="Remove point {anchor.id}" title="Remove point {anchor.id}"><Icon name="close" size={16} /></button>
+          </div>
+        {/each}
+      {/if}
     </div>
+  {/if}
 
-    <div class="anchor-image">
-      <span class="image-label">Source</span>
-      <div
-        class="anchor-frame"
-        bind:this={srcFrame}
-        onpointerdown={(event) => handleFramePointerDown(event, 'src')}
-        onpointermove={handlePointerMove}
-        onpointerup={handlePointerUp}
-        role="button"
-        tabindex="0"
-        aria-label="Source anchor canvas"
-      >
-        {#if srcImg}
-          <img src={srcImg.src} alt="Source anchors" draggable="false" />
-          {#if gridVisible}<span class="visual-grid" style={gridStyle('src')}></span>{/if}
-          {#each anchors as anchor}
-            {#if anchor.src}
-              <button
-                class="anchor-handle source"
-                class:selected={selectedAnchorId === anchor.id}
-                style:--anchor-color={anchorColor(anchor.id)}
-                style:left={displayPoint(anchor.src, 'src').left}
-                style:top={displayPoint(anchor.src, 'src').top}
-                onpointerdown={(event) => handleAnchorPointerDown(event, anchor.id, 'src')}
-                aria-label="Source anchor {anchor.id}"
-              >
-                <span class="anchor-number">{anchor.id}</span>
-              </button>
-            {/if}
-          {/each}
-        {/if}
-      </div>
-    </div>
+  <div class="anchor-workspace">
+    {@render canvas('ref')}
+    {@render canvas('src')}
   </div>
 
   {#if incompleteCount > 0}
     <p class="anchor-note">{incompleteCount} anchor{incompleteCount === 1 ? '' : 's'} still need a matching point.</p>
   {/if}
-
-  {#if listExpanded}
-    <div class="anchor-list">
-      {#if anchors.length === 0}
-        <div class="empty-list">No manual anchors yet.</div>
-      {:else}
-        {#each anchors as anchor}
-          <button
-            class="anchor-row"
-            class:selected={selectedAnchorId === anchor.id}
-            onclick={() => onselect(anchor.id)}
-          >
-            <span>Point {anchor.id}</span>
-            <span>{anchor.ref ? `${anchor.ref.x.toFixed(0)}, ${anchor.ref.y.toFixed(0)}` : 'ref missing'}</span>
-            <span>{anchor.src ? `${anchor.src.x.toFixed(0)}, ${anchor.src.y.toFixed(0)}` : 'source missing'}</span>
-            <span
-              class="remove-anchor"
-              role="button"
-              tabindex="0"
-              onclick={(event) => {
-                event.stopPropagation();
-                onremove(anchor.id);
-              }}
-              onkeydown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onremove(anchor.id);
-                }
-              }}
-            >
-              Remove
-            </span>
-          </button>
-        {/each}
-      {/if}
-    </div>
-  {/if}
 </section>
 
 <style>
-  .anchor-editor { display: grid; gap: 1rem; }
+  .anchor-editor { display: flex; flex-direction: column; gap: 12px; }
+  .anchor-toolbar { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 8px; position: sticky; top: calc(var(--app-bar-height) + 8px); z-index: 20; }
+  .pair-progress { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.85rem; gap: 10px; padding: 0 6px; }
+  .pair-progress strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .pair-meter { display: inline-flex; gap: 3px; }
+  .pair-meter span { background: var(--hairline); border-radius: 999px; height: 6px; transition: background 160ms var(--ease); width: 14px; }
+  .pair-meter span.done { background: var(--ok); }
 
-  .anchor-toolbar,
-  .toolbar-actions,
-  .anchor-workspace {
-    display: flex;
-  }
+  .placement-guide { align-items: center; color: var(--ink); display: grid; font-size: 0.875rem; gap: 4px 10px; grid-template-columns: auto 1fr auto; padding: 0 4px; }
+  .pair-dot, .row-dot { align-items: center; background: var(--anchor-color); border-radius: 999px; color: #fff; display: inline-flex; flex: none; font-size: 0.7rem; font-weight: 700; height: 20px; justify-content: center; min-width: 20px; padding: 0 5px; }
+  .nudge-hint { color: var(--ink-muted); font-size: 0.8rem; text-align: right; }
 
-  .anchor-toolbar {
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-  }
+  .grid-controls { align-items: center; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 10px 14px; }
+  .control-title { font-size: 0.85rem; font-weight: 600; }
+  .grid-controls label { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.8rem; gap: 8px; }
+  .grid-controls input[type="range"] { width: 100px; }
+  .grid-controls .segmented > button { font-size: 0.8rem; min-height: 30px; }
 
-  h2,
-  p {
-    margin: 0;
-  }
+  .anchor-list { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius); display: grid; max-height: 280px; overflow: auto; }
+  .anchor-row { align-items: center; border-bottom: 1px solid var(--hairline); display: grid; font-size: 0.82rem; font-variant-numeric: tabular-nums; gap: 12px; grid-template-columns: 56px 1fr 1fr 40px; padding: 2px 8px; }
+  .anchor-row:last-child { border-bottom: 0; }
+  .anchor-row.head { color: var(--ink-muted); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; min-height: 32px; text-transform: uppercase; }
+  .anchor-row.selected { background: var(--accent-tint); }
+  .row-select { background: transparent; border: 0; border-radius: 8px; cursor: pointer; display: flex; min-height: 40px; padding: 0 4px; align-items: center; }
+  .missing { color: var(--danger); }
+  .empty-list { color: var(--ink-muted); font-size: 0.85rem; padding: 14px; }
 
-  h2 {
-    color: var(--text);
-    font-size: 1rem;
-    font-weight: 800;
-  }
-
-  .anchor-toolbar p,
-  .anchor-note {
-    color: var(--muted);
-    font-size: 0.84rem;
-    margin-top: 0.2rem;
-  }
-
-  .toolbar-actions {
-    gap: 0.5rem;
-  }
-
-  .anchor-btn {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    cursor: pointer;
-    font-size: 0.8rem;
-    font-weight: 800;
-    min-height: 2.25rem;
-    padding: 0.45rem 0.75rem;
-  }
-
-  .anchor-btn.active,
-  .link-grid.active {
-    background: var(--accent-soft);
-    border-color: rgba(36, 107, 254, 0.35);
-    color: var(--accent);
-  }
-
-  .anchor-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-  }
-
-  .anchor-btn.danger {
-    color: var(--danger);
-  }
-
-  .anchor-workspace {
-    gap: 1rem;
-  }
-
-  .placement-guide {
-    align-items: center;
-    background: #eef5ff;
-    border: 1px solid #c9dcff;
-    border-radius: 7px;
-    color: #24456f;
-    display: flex;
-    font-size: 0.82rem;
-    font-weight: 700;
-    gap: 0.65rem;
-    padding: 0.65rem 0.75rem;
-  }
-
-  .guide-crosshair {
-    border: 1.5px solid var(--accent);
-    border-radius: 50%;
-    height: 0.8rem;
-    position: relative;
-    width: 0.8rem;
-  }
-
-  .guide-crosshair::before,
-  .guide-crosshair::after {
-    background: var(--accent);
-    content: '';
-    left: 50%;
-    position: absolute;
-    top: 50%;
-    transform: translate(-50%, -50%);
-  }
-
-  .guide-crosshair::before { height: 1px; width: 1.15rem; }
-  .guide-crosshair::after { height: 1.15rem; width: 1px; }
-
-  .nudge-hint {
-    color: var(--muted);
-    font-size: 0.74rem;
-    font-weight: 600;
-    margin-left: auto;
-  }
-
-  .grid-controls {
-    align-items: center;
-    background: #f8fafc;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 1rem;
-    padding: 0.65rem 0.75rem;
-  }
-
-  .control-title {
-    color: var(--text);
-    font-size: 0.78rem;
-    font-weight: 800;
-  }
-
-  .grid-controls label {
-    align-items: center;
-    color: var(--muted);
-    display: flex;
-    font-size: 0.72rem;
-    font-weight: 700;
-    gap: 0.4rem;
-  }
-
-  .grid-controls input[type="range"] {
-    accent-color: var(--accent);
-    width: 88px;
-  }
-
-  .link-grid {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 0.72rem;
-    font-weight: 800;
-    margin-left: auto;
-    padding: 0.4rem 0.6rem;
-  }
-
-  .grid-side {
-    background: var(--control-bg);
-    border-radius: 6px;
-    display: flex;
-    padding: 0.15rem;
-  }
-
-  .grid-side button {
-    background: transparent;
-    border: 0;
-    border-radius: 4px;
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 0.68rem;
-    font-weight: 800;
-    padding: 0.32rem 0.45rem;
-  }
-
-  .grid-side button.active {
-    background: var(--surface);
-    box-shadow: 0 1px 3px rgba(20, 26, 35, 0.14);
-    color: var(--text);
-  }
-
-  .anchor-image {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .image-label {
-    color: var(--muted);
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 800;
-    margin-bottom: 0.5rem;
-    text-transform: uppercase;
-  }
-
-  .anchor-frame {
-    align-items: center;
-    aspect-ratio: 4 / 3;
-    background:
-      linear-gradient(45deg, #f0f2f5 25%, transparent 25%),
-      linear-gradient(-45deg, #f0f2f5 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, #f0f2f5 75%),
-      linear-gradient(-45deg, transparent 75%, #f0f2f5 75%);
-    background-color: #ffffff;
-    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
-    background-size: 20px 20px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    cursor: crosshair;
-    display: flex;
-    justify-content: center;
-    overflow: hidden;
-    position: relative;
-    touch-action: none;
-  }
-
-  .anchor-frame img {
-    display: block;
-    height: 100%;
-    max-width: 100%;
-    object-fit: contain;
-    pointer-events: none;
-    width: 100%;
-  }
+  .anchor-workspace { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .canvas-wrap { background: var(--canvas-bg); padding: 8px; }
+  .anchor-frame { display: flex; height: clamp(280px, calc(100dvh - 330px), 860px); justify-content: center; overflow: hidden; position: relative; touch-action: none; }
+  .anchor-frame:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .anchor-frame img { display: block; height: 100%; object-fit: contain; pointer-events: none; user-select: none; width: 100%; }
+  .anchor-note { color: var(--ink-muted); font-size: 0.82rem; text-align: center; }
 
   .visual-grid {
     background-image:
@@ -653,189 +503,51 @@
     position: absolute;
   }
 
-  .anchor-handle {
-    --anchor-color: var(--accent);
-    --crosshair-color: var(--anchor-color);
-    background:
-      linear-gradient(var(--crosshair-color), var(--crosshair-color)) left center / calc(50% - 4px) 1.5px no-repeat,
-      linear-gradient(var(--crosshair-color), var(--crosshair-color)) right center / calc(50% - 4px) 1.5px no-repeat,
-      linear-gradient(var(--crosshair-color), var(--crosshair-color)) center top / 1.5px calc(50% - 4px) no-repeat,
-      linear-gradient(var(--crosshair-color), var(--crosshair-color)) center bottom / 1.5px calc(50% - 4px) no-repeat;
-    border: 0;
-    cursor: grab;
-    filter: drop-shadow(0 1px 1px rgba(20, 26, 35, 0.35));
-    height: 2rem;
-    min-width: 2rem;
-    padding: 0;
-    pointer-events: auto;
-    position: absolute;
-    transform: translate(-50%, -50%);
-    width: 2rem;
-  }
-
-  .anchor-handle.selected {
-    --crosshair-color: var(--danger);
-    filter:
-      drop-shadow(0 0 0 rgba(200, 50, 50, 0.18))
-      drop-shadow(0 1px 1px rgba(20, 26, 35, 0.35));
-  }
-
+  /* Marker: an open, adaptive crosshair centred on the exact point, plus an offset colour badge
+     identifying the pair. Nothing is drawn over the point itself. */
+  .anchor-handle { background: transparent; border: 0; border-radius: 50%; cursor: grab; height: 36px; padding: 0; position: absolute; transform: translate(-50%, -50%); width: 36px; }
+  .anchor-handle.dragging { cursor: grabbing; }
+  .anchor-handle:focus-visible { outline: 2px solid var(--anchor-color); outline-offset: 0; }
+  .handle-cross, .hover-cross { display: block; height: 36px; overflow: visible; pointer-events: none; width: 36px; }
+  .hover-cross { position: absolute; transform: translate(-50%, -50%); }
   .anchor-number {
     align-items: center;
     background: var(--anchor-color);
-    border: 1px solid #ffffff;
-    border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(20, 26, 35, 0.22);
-    color: #ffffff;
+    border: 1.5px solid #fff;
+    border-radius: 999px;
+    box-shadow: 0 1px 3px rgba(20, 26, 35, 0.3);
+    color: #fff;
     display: flex;
     font-size: 0.66rem;
-    font-weight: 800;
-    height: 1.1rem;
+    font-weight: 700;
+    height: 18px;
     justify-content: center;
     line-height: 1;
-    min-width: 1.25rem;
-    padding: 0 0.2rem;
+    min-width: 18px;
+    padding: 0 4px;
     pointer-events: none;
     position: absolute;
-    right: -0.75rem;
-    top: -0.75rem;
+    right: -12px;
+    top: -12px;
+    transition: transform 160ms var(--ease);
   }
+  .anchor-handle.selected .anchor-number { box-shadow: 0 0 0 3px color-mix(in srgb, var(--anchor-color) 35%, transparent), 0 1px 3px rgba(20, 26, 35, 0.3); transform: scale(1.15); }
+  .anchor-handle.pending .anchor-number { animation: halo 1.6s ease-in-out infinite; }
+  @keyframes halo { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--anchor-color) 30%, transparent); } }
 
-  .anchor-number:hover {
-    cursor: grab;
+  @media (max-width: 1180px) {
+    .placement-guide { align-items: start; grid-template-columns: auto 1fr; }
+    .nudge-hint { grid-column: 2; text-align: left; }
   }
-
-  .anchor-handle:active .anchor-number {
-    cursor: grabbing;
-  }
-
-  .anchor-list {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-    display: grid;
-    bottom: calc(104px + env(safe-area-inset-bottom));
-    left: 50%;
-    position: fixed;
-    transform: translateX(-50%);
-    width: min(600px, calc(100vw - 32px));
-    max-height: min(320px, 45vh);
-    overflow: auto;
-    z-index: 21;
-  }
-
-  .anchor-row {
-    align-items: center;
-    background: var(--surface);
-    border: 0;
-    border-bottom: 1px solid var(--border);
-    color: var(--muted);
-    cursor: pointer;
-    display: grid;
-    font-size: 0.8rem;
-    gap: 0.75rem;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    padding: 0.65rem 0.75rem;
-    text-align: left;
-  }
-
-  .anchor-row:last-child {
-    border-bottom: 0;
-  }
-
-  .anchor-row.selected {
-    background: var(--accent-tint);
-    color: var(--text);
-  }
-
-  .anchor-row span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .remove-anchor {
-    color: var(--danger);
-    font-weight: 800;
-    justify-self: end;
-  }
-
-  .empty-list {
-    color: var(--muted);
-    font-size: 0.84rem;
-    padding: 0.8rem;
-  }
-
-  @media (max-width: 820px) {
-    .anchor-toolbar,
-    .anchor-workspace {
-      flex-direction: column;
-    }
-
-    .toolbar-actions,
-    .anchor-btn {
-      width: 100%;
-    }
-
-    .anchor-row {
-      display: grid;
-      grid-template-columns: 1fr;
-    }
-
-    .placement-guide {
-      align-items: flex-start;
-      flex-wrap: wrap;
-      min-height: 6rem;
-    }
-
-    .nudge-hint {
-      margin-left: 1.45rem;
-      width: 100%;
-    }
-
-    .grid-controls {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .grid-controls label {
-      justify-content: space-between;
-    }
-
-    .grid-controls input[type="range"],
-    .link-grid {
-      margin-left: 0;
-      width: 60%;
-    }
-  }
-  .anchor-toolbar { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; bottom: max(1.5rem, env(safe-area-inset-bottom)); box-shadow: var(--shadow); left: 50%; max-width: calc(100vw - 2rem); padding: 0.4rem; position: fixed; transform: translateX(-50%); z-index: 20; }
-  .anchor-toolbar > div:first-child { display: none; }
-  .toolbar-actions { align-items: center; }
-  .anchor-btn { border: 0; border-radius: 8px; font-weight: 500; white-space: nowrap; }
-  .anchor-btn.apply { background: var(--accent); color: var(--on-accent); }
-  .anchor-btn.apply:disabled { background: #aab2c9; }
-  .anchor-btn.active { background: var(--accent-tint); }
-  .placement-guide { background: transparent; border: 0; color: var(--muted); padding: 0.2rem; }
-  .anchor-frame { background: #f7f6f3; border: 7px solid var(--surface); border-radius: 14px; box-shadow: var(--shadow); }
-  .image-label { display: none; }
-  .grid-controls { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; bottom: 5.8rem; box-shadow: var(--shadow); left: 50%; max-width: calc(100vw - 2rem); position: fixed; transform: translateX(-50%); z-index: 21; }
-  @media (max-width: 820px) {
-    .anchor-toolbar { border-radius: 18px; }
-    .toolbar-actions { flex-wrap: wrap; justify-content: center; }
-    .anchor-btn { width: auto; }
-    .anchor-workspace { flex-direction: column; }
-    .grid-controls { width: min(350px, calc(100vw - 2rem)); }
-    .grid-controls input[type="range"], .link-grid { width: 60%; }
-  }
-  .anchor-toolbar { bottom: calc(24px + env(safe-area-inset-bottom)); box-shadow: var(--shadow); min-height: 64px; }
-  .anchor-btn { align-items: center; display: flex; justify-content: center; min-height: 44px; width: 44px; padding: 0; }
-  @media (max-width: 719px) { .anchor-workspace { flex-direction: column; } }
-  @media (max-width: 479px) {
-    .anchor-toolbar { border-radius: 999px; width: calc(100vw - 24px); }
-    .toolbar-actions { flex-wrap: nowrap; gap: 2px; }
-    .anchor-btn { flex: none; min-width: 42px; padding: 4px; }
-    .placement-guide { font-weight: 500; }
+  @media (max-width: 719px) {
+    .anchor-toolbar { gap: 6px; padding: 6px; }
+    .anchor-toolbar .tool-sep { display: none; }
+    .pair-progress { order: -1; width: 100%; }
+    .anchor-workspace { grid-template-columns: 1fr; }
+    .anchor-frame { aspect-ratio: var(--ratio); height: auto; max-height: 60vh; }
+    .long-label { display: none; }
+    .canvas-wrap { padding: 4px; }
+    .grid-controls label { justify-content: space-between; width: 100%; }
+    .grid-controls input[type="range"] { flex: 1; max-width: 60%; }
   }
 </style>
