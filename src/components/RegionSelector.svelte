@@ -4,6 +4,7 @@
   import { regionFromPoints, type Region } from '../lib/region';
   import { createSampler, crosshairShades, DEFAULT_SHADES, type CrosshairShades, type Sampler } from '../lib/contrast';
   import Crosshair from './Crosshair.svelte';
+  import Magnifier from './Magnifier.svelte';
 
   let { image, region = $bindable(null), savedRegions = [] }: {
     image: HTMLImageElement;
@@ -14,13 +15,14 @@
   let surface: SVGSVGElement = $state()!;
   let start: Point | null = $state(null);
   let cursor = $state<Point>({ x: 0, y: 0 });
-  let pointerId: number | null = null;
+  let pointerId = $state<number | null>(null);
   let keyboard = $state(false);
   // Drawn pointer cursor: its centre is the exact point that a click or drag uses.
   let hover = $state<Point | null>(null);
   let shades = $state<CrosshairShades>(DEFAULT_SHADES);
   let imagePerScreen = $state(1);
-  let sampler: Sampler | null = null;
+  let sampler = $state.raw<Sampler | null>(null);
+  let magnified = $derived(pointerId !== null || keyboard ? cursor : hover);
 
   $effect(() => {
     const current = image;
@@ -72,8 +74,10 @@
     surface.setPointerCapture(event.pointerId);
     pointerId = event.pointerId;
     keyboard = false;
+    hover = null;
     start = point(event);
     cursor = start;
+    shadeAt(cursor);
     region = null;
   }
 
@@ -81,7 +85,8 @@
     if (event.pointerId === pointerId) {
       const p = point(event);
       update(p);
-      if (event.pointerType === 'mouse') { hover = p; shadeAt(p); }
+      shadeAt(p);
+      if (event.pointerType === 'mouse') hover = p;
       return;
     }
     if (event.pointerType !== 'mouse') return;
@@ -95,12 +100,15 @@
     update(point(event));
     pointerId = null;
     start = null;
+    if (event.pointerType !== 'mouse') hover = null;
     surface.releasePointerCapture(event.pointerId);
   }
 
   function cancel() {
     start = null;
     pointerId = null;
+    hover = null;
+    keyboard = false;
     region = null;
   }
 
@@ -170,12 +178,18 @@
       <rect class="handle" x={corner[0] - 4 * imagePerScreen} y={corner[1] - 4 * imagePerScreen} width={8 * imagePerScreen} height={8 * imagePerScreen} vector-effect="non-scaling-stroke" pointer-events="none" />
     {/each}
   {/if}
-  {#if hover}
+  {#if pointerId !== null}
+    <g transform="translate({cursor.x} {cursor.y}) scale({imagePerScreen})"><Crosshair {shades} /></g>
+  {:else if hover}
     <g transform="translate({hover.x} {hover.y}) scale({imagePerScreen})"><Crosshair {shades} /></g>
   {:else if keyboard}
     <g transform="translate({cursor.x} {cursor.y}) scale({imagePerScreen})"><Crosshair {shades} emphasis /></g>
   {/if}
 </svg>
+
+{#if magnified}
+  <Magnifier {image} point={magnified} {surface} {sampler} />
+{/if}
 
 <style>
   svg { background: var(--canvas-bg); display: block; height: var(--view-height, min(58vh, 650px)); touch-action: none; user-select: none; width: 100%; }

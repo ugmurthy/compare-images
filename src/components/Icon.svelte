@@ -27,6 +27,7 @@
     play: 'm8 5 11 7-11 7Z',
     stop: 'M6 6h12v12H6Z',
     theme: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 3v18',
+    magnifier: 'M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm6-2 5 5M6 10h8M10 6v8',
     compare: 'M4 4h6v16H4ZM14 4h6v16h-6ZM7 9v6M17 9v6',
     folder: 'M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z',
     select: 'M4 8V5a1 1 0 0 1 1-1h3M12 4h0M16 4h3a1 1 0 0 1 1 1v3M4 12h0M4 16v3a1 1 0 0 0 1 1h3M12 20h0M16 20h0M20 12v0M15 15h6M18 12v6',

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick } from 'svelte';
+  import { onDestroy, setContext, tick } from 'svelte';
   import {
     alignImages,
     alignImagesManually,
@@ -18,12 +18,23 @@
   import HistoryView from './components/HistoryView.svelte';
   import StorageStatus from './components/StorageStatus.svelte';
   import ThemeSelect from './components/ThemeSelect.svelte';
+  import { magnifierPreferenceContext } from './components/Magnifier.svelte';
   import NotePreview from './components/NotePreview.svelte';
   import PartsView from './components/PartsView.svelte';
   import MeasureView from './components/MeasureView.svelte';
   import type { Region } from './lib/region';
   import ImageDrop from './components/ImageDrop.svelte';
   import type { ComparisonMode } from './components/ModeSwitch.svelte';
+
+  const magnifierPreference = $state({ enabled: true });
+  try {
+    magnifierPreference.enabled = localStorage.getItem('compare-sketch-magnifier') !== 'off';
+  } catch { /* Magnifier still works when browser storage is unavailable. */ }
+  setContext(magnifierPreferenceContext, magnifierPreference);
+  $effect(() => {
+    try { localStorage.setItem('compare-sketch-magnifier', magnifierPreference.enabled ? 'on' : 'off'); }
+    catch { /* Keep the selected preference for this session. */ }
+  });
 
   let refFile: File | null = $state(null);
   let srcFile: File | null = $state(null);
@@ -699,6 +710,11 @@
   </nav>
   <div class="app-status">
     <StorageStatus entries={historyEntries} />
+    <button class="btn icon quiet magnifier-toggle" role="switch" aria-label="Magnifier" aria-checked={magnifierPreference.enabled}
+      title={`Magnifier ${magnifierPreference.enabled ? 'on' : 'off'} — toggle for all marking tools`}
+      onclick={() => magnifierPreference.enabled = !magnifierPreference.enabled}>
+      <Icon name="magnifier" /><span class="switch-track" aria-hidden="true"></span>
+    </button>
     <ThemeSelect />
     <button class="runtime-pill" class:ready={cvState === 'ready'} class:error={cvState === 'error'} onclick={() => { if (cvState === 'error') void loadCv(); }}
       aria-label={cvState === 'error' ? 'OpenCV failed. Retry' : runtimeLabel}
@@ -962,6 +978,12 @@
   .primary-nav > button { min-height: 36px; padding: 0 0.9rem; }
   .primary-nav > button[aria-disabled='true'] { opacity: 0.5; }
   .app-status { align-items: center; display: flex; gap: 4px; justify-content: flex-end; }
+  .magnifier-toggle { color: var(--ink-muted); position: relative; }
+  .magnifier-toggle[aria-checked='true'] { background: var(--accent-tint); color: var(--accent); }
+  .switch-track { background: var(--ink-muted); border-radius: 999px; bottom: 3px; height: 7px; position: absolute; right: 3px; width: 14px; }
+  .switch-track::after { background: var(--surface); border-radius: 50%; content: ''; height: 5px; left: 1px; position: absolute; top: 1px; width: 5px; }
+  .magnifier-toggle[aria-checked='true'] .switch-track { background: var(--accent); }
+  .magnifier-toggle[aria-checked='true'] .switch-track::after { left: 8px; }
   .runtime-pill { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 10px; color: var(--ink-muted); cursor: default; display: inline-flex; font-size: 0.78rem; gap: 6px; justify-content: center; min-height: 40px; min-width: 40px; padding: 0 8px; }
   .runtime-pill.error { background: var(--danger-tint); color: var(--danger); cursor: pointer; }
   .runtime-dot { background: var(--warning); border-radius: 50%; height: 8px; width: 8px; }
@@ -1061,6 +1083,8 @@
   }
   @media (max-width: 719px) {
     .app-bar { gap: 8px; padding: 8px 12px; }
+    .primary-nav > button { padding: 0; width: 36px; }
+    .runtime-pill { min-width: 28px; padding: 0; }
     h1 { display: none; }
     .page { padding: 14px 12px 40px; }
     .upload-grid { grid-template-columns: 1fr; gap: 14px; }
@@ -1076,5 +1100,10 @@
     .modal-scrim { align-items: flex-end; padding: 0; }
     .save-dialog { border-radius: var(--radius-lg) var(--radius-lg) 0 0; max-height: calc(100dvh - env(safe-area-inset-top) - 1rem); padding-bottom: env(safe-area-inset-bottom); width: 100%; }
     .save-panel { padding: 22px 18px; }
+  }
+  @media (max-width: 359px) {
+    .brand { display: none; }
+    .app-bar { gap: 4px; grid-template-columns: 1fr auto; padding: 8px max(4px, env(safe-area-inset-right)) 8px max(4px, env(safe-area-inset-left)); }
+    .runtime-text { display: none; }
   }
 </style>

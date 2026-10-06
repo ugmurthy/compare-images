@@ -3,6 +3,7 @@
   import type { ManualAnchor, Point } from '../lib/manualAnchors';
   import { createSampler, crosshairShades, type CrosshairShades, type Sampler } from '../lib/contrast';
   import Crosshair from './Crosshair.svelte';
+  import Magnifier from './Magnifier.svelte';
   import Icon from './Icon.svelte';
 
   let {
@@ -44,11 +45,15 @@
   let refFrame: HTMLDivElement = $state()!;
   let srcFrame: HTMLDivElement = $state()!;
   let dragState: {
-    id: number;
+    id: number | null;
+    pointerId: number;
+    target: HTMLElement;
+    point: Point;
     side: 'ref' | 'src';
     pointerOffsetX: number;
     pointerOffsetY: number;
   } | null = $state(null);
+  let keyboardPoint = $state<{ side: 'ref' | 'src'; point: Point } | null>(null);
   let lastActiveSide: 'ref' | 'src' = $state('ref');
   let gridVisible = $state(false);
   let gridLinked = $state(true);
@@ -62,7 +67,8 @@
   let layoutVersion = $state(0);
   let samplers = $state.raw<{ ref: Sampler | null; src: Sampler | null }>({ ref: null, src: null });
   let markerShades = $state<Record<string, CrosshairShades>>({});
-  let hover = $state<{ side: 'ref' | 'src'; left: number; top: number; shades: CrosshairShades } | null>(null);
+  let hover = $state<{ side: 'ref' | 'src'; point: Point; left: number; top: number; shades: CrosshairShades } | null>(null);
+  let magnified = $derived(dragState ?? hover ?? keyboardPoint);
 
   $effect(() => {
     samplers = { ref: refImg ? createSampler(refImg) : null, src: srcImg ? createSampler(srcImg) : null };
@@ -96,6 +102,7 @@
   }
 
   function handleFrameMove(event: PointerEvent, side: 'ref' | 'src') {
+    keyboardPoint = null;
     handlePointerMove(event);
     if (dragState || event.pointerType !== 'mouse' || (event.target as HTMLElement).closest('button')) {
       hover = null;
@@ -113,7 +120,7 @@
     // The same mapping as pointFromClient, so the drawn centre is exactly where a click places the anchor.
     const point = { x: ((left - offsetX) / renderedWidth) * img.naturalWidth, y: ((top - offsetY) / renderedHeight) * img.naturalHeight };
     const previous = hover?.side === side ? hover.shades : undefined;
-    hover = { side, left, top, shades: crosshairShades(samplers[side], point, img.naturalWidth / renderedWidth, previous) };
+    hover = { side, point, left, top, shades: crosshairShades(samplers[side], point, img.naturalWidth / renderedWidth, previous) };
   }
 
   let completeCount = $derived(anchors.filter((anchor) => anchor.ref && anchor.src).length);
@@ -243,22 +250,42 @@
   }
 
   function handleFramePointerDown(event: PointerEvent, side: 'ref' | 'src') {
+    if (!event.isPrimary || event.button !== 0 || dragState) return;
     if ((event.target as HTMLElement).closest('button')) return;
+    const placement = imagePlacement(side);
+    if (!placement) return;
+    const { rect, borderX, borderY, offsetX, offsetY, renderedWidth, renderedHeight } = placement;
+    const x = event.clientX - rect.left - borderX - offsetX;
+    const y = event.clientY - rect.top - borderY - offsetY;
+    if (x < 0 || y < 0 || x > renderedWidth || y > renderedHeight) return;
     const point = pointFromEvent(event, side);
     if (!point) return;
     lastActiveSide = side;
-    onadd(side, point);
+    hover = null;
+    keyboardPoint = null;
+    const target = event.currentTarget as HTMLElement;
+    target.focus({ preventScroll: true });
+    dragState = { id: null, pointerId: event.pointerId, target, point, side, pointerOffsetX: 0, pointerOffsetY: 0 };
+    target.setPointerCapture(event.pointerId);
   }
 
   function handleAnchorPointerDown(event: PointerEvent, id: number, side: 'ref' | 'src') {
+    if (!event.isPrimary || event.button !== 0 || dragState) return;
     event.preventDefault();
     event.stopPropagation();
+    const point = anchors.find((anchor) => anchor.id === id)?.[side];
+    if (!point) return;
+    hover = null;
+    keyboardPoint = null;
     lastActiveSide = side;
     onselect(id);
     const handle = event.currentTarget as HTMLElement;
     const rect = handle.getBoundingClientRect();
     dragState = {
       id,
+      pointerId: event.pointerId,
+      target: handle,
+      point,
       side,
       pointerOffsetX: event.clientX - (rect.left + rect.width / 2),
       pointerOffsetY: event.clientY - (rect.top + rect.height / 2)
@@ -267,17 +294,33 @@
   }
 
   function handlePointerMove(event: PointerEvent) {
-    if (!dragState) return;
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
     const point = pointFromClient(
       event.clientX - dragState.pointerOffsetX,
       event.clientY - dragState.pointerOffsetY,
       dragState.side
     );
-    if (point) onmove(dragState.id, dragState.side, point);
+    if (point) {
+      dragState.point = point;
+      if (dragState.id !== null) onmove(dragState.id, dragState.side, point);
+    }
   }
 
-  function handlePointerUp() {
+  function handlePointerUp(event: PointerEvent) {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    handlePointerMove(event);
+    const { id, side, point, target, pointerId } = dragState;
     dragState = null;
+    if (id === null) onadd(side, point);
+    if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
+  }
+
+  function cancelPointer(event: PointerEvent) {
+    if (dragState?.pointerId !== event.pointerId) return;
+    const { target, pointerId } = dragState;
+    dragState = null;
+    hover = null;
+    if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -294,10 +337,14 @@
       if (!point) return;
       event.preventDefault();
       const step = event.shiftKey ? 10 : 1;
-      onmove(selectedAnchorId, lastActiveSide, {
-        x: point.x + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0),
-        y: point.y + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0)
-      });
+      const img = imageForSide(lastActiveSide)!;
+      const next = {
+        x: clamp(point.x + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0), 0, img.naturalWidth),
+        y: clamp(point.y + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0), 0, img.naturalHeight)
+      };
+      onmove(selectedAnchorId, lastActiveSide, next);
+      hover = null;
+      keyboardPoint = { side: lastActiveSide, point: next };
     }
   }
 </script>
@@ -316,13 +363,15 @@
       {#if side === 'ref'}
         <div class="anchor-frame" bind:this={refFrame} style:cursor={hover?.side === side ? 'none' : 'default'} style:--ratio={img ? img.naturalWidth / img.naturalHeight : 4 / 3}
           onpointerdown={(event) => handleFramePointerDown(event, side)} onpointermove={(event) => handleFrameMove(event, side)}
-          onpointerup={handlePointerUp} onpointerleave={() => hover = null} role="button" tabindex="0" aria-label="Reference anchor canvas">
+          onpointerup={handlePointerUp} onpointercancel={cancelPointer} onlostpointercapture={cancelPointer}
+          onpointerleave={() => hover = null} onfocusout={() => keyboardPoint = null} role="button" tabindex="0" aria-label="Reference anchor canvas">
           {@render layers(side, img)}
         </div>
       {:else}
         <div class="anchor-frame" bind:this={srcFrame} style:cursor={hover?.side === side ? 'none' : 'default'} style:--ratio={img ? img.naturalWidth / img.naturalHeight : 4 / 3}
           onpointerdown={(event) => handleFramePointerDown(event, side)} onpointermove={(event) => handleFrameMove(event, side)}
-          onpointerup={handlePointerUp} onpointerleave={() => hover = null} role="button" tabindex="0" aria-label="Source anchor canvas">
+          onpointerup={handlePointerUp} onpointercancel={cancelPointer} onlostpointercapture={cancelPointer}
+          onpointerleave={() => hover = null} onfocusout={() => keyboardPoint = null} role="button" tabindex="0" aria-label="Source anchor canvas">
           {@render layers(side, img)}
         </div>
       {/if}
@@ -354,7 +403,10 @@
         </button>
       {/if}
     {/each}
-    {#if hover?.side === side}
+    {#if dragState?.side === side && dragState.id === null}
+      {@const position = displayPoint(dragState.point, side)}
+      <svg class="hover-cross" viewBox="-18 -18 36 36" style:left={position.left} style:top={position.top} aria-hidden="true"><Crosshair shades={crosshairShades(samplers[side], dragState.point, imagePerScreen(side))} /></svg>
+    {:else if hover?.side === side}
       <svg class="hover-cross" viewBox="-18 -18 36 36" style:left="{hover.left}px" style:top="{hover.top}px" aria-hidden="true"><Crosshair shades={hover.shades} /></svg>
     {/if}
   {/if}
@@ -391,7 +443,7 @@
   <p class="placement-guide" aria-live="polite">
     <span class="pair-dot" style:--anchor-color={anchorColor(pendingId)} aria-hidden="true">{pendingId}</span>
     <span class="hint-text">{placementHint}</span>
-    <span class="nudge-hint">Drag a marker to refine · Arrow keys nudge (Shift ×10) · Delete removes</span>
+    <span class="nudge-hint">Hold and move to place precisely · Drag markers to refine · Arrows nudge (Shift ×10) · Delete removes</span>
   </p>
 
   {#if gridVisible}
@@ -455,6 +507,9 @@
 
   {#if incompleteCount > 0}
     <p class="anchor-note">{incompleteCount} anchor{incompleteCount === 1 ? '' : 's'} still need a matching point.</p>
+  {/if}
+  {#if magnified && imageForSide(magnified.side)}
+    <Magnifier image={imageForSide(magnified.side)!} point={magnified.point} surface={frameForSide(magnified.side)} sampler={samplers[magnified.side]} />
   {/if}
 </section>
 

@@ -6,6 +6,7 @@
   import { loadCalibration, saveCalibration } from '../lib/history';
   import { createSampler, crosshairShades, DEFAULT_SHADES, type CrosshairShades, type Sampler } from '../lib/contrast';
   import Crosshair from './Crosshair.svelte';
+  import Magnifier from './Magnifier.svelte';
   import Icon from './Icon.svelte';
 
   let { image, file, region = null, onback }: {
@@ -28,11 +29,13 @@
   let unit = $state('cm');
   let zoom = $state(1);
   let panning = $state(false);
-  let surface: SVGSVGElement;
+  let surface: SVGSVGElement = $state()!;
   let surfaceWidth = $state(1);
   let surfaceHeight = $state(1);
   let drag = $state<{ index: number; id: number; x: number; y: number } | null>(null);
   let cursor = $state<Point | null>(null);
+  let nudged = $state<Point | null>(null);
+  let magnified = $derived(drag ? drag.index >= 0 ? points[drag.index] : null : cursor ?? nudged);
   let sampler = $state.raw<Sampler | null>(null);
   let pointShades = $state<(CrosshairShades | undefined)[]>([]);
   let cursorShades = $state<CrosshairShades>(DEFAULT_SHADES);
@@ -86,6 +89,7 @@
 
   async function centerZoom() {
     cursor = null;
+    nudged = null;
     await tick();
     const viewport = surface.parentElement!;
     viewport.scrollLeft = (viewport.scrollWidth - viewport.clientWidth) / 2;
@@ -95,6 +99,7 @@
   function clearPoints() {
     points = [];
     cursor = null;
+    nudged = null;
     panning = false;
     notice = '';
   }
@@ -133,6 +138,7 @@
 
   function begin(event: PointerEvent) {
     if (loading || saving || !event.isPrimary || event.button !== 0 || drag) return;
+    nudged = null;
     if (panning && zoom > 1) {
       drag = { index: -1, id: event.pointerId, x: event.clientX, y: event.clientY };
       surface.setPointerCapture(event.pointerId);
@@ -152,6 +158,7 @@
   }
 
   function move(event: PointerEvent) {
+    nudged = null;
     if (!drag) {
       cursor = null;
       if (event.pointerType !== 'mouse' || loading || saving || (panning && zoom > 1)
@@ -187,7 +194,11 @@
       const step = event.shiftKey ? 10 : 1;
       const next = clamp({ x: p.x + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
         y: p.y + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0) });
-      if (index !== undefined) points = points.map((point, i) => i === index ? next : point);
+      if (index !== undefined) {
+        points = points.map((point, i) => i === index ? next : point);
+        cursor = null;
+        nudged = next;
+      }
       else cursor = next;
     } else if ((event.key === 'Enter' || event.key === ' ') && index === undefined) {
       event.preventDefault();
@@ -229,7 +240,8 @@
           aria-label="Measurement image. Click two points. Arrow keys move the cursor, Enter places a point. Tab to endpoints and use arrows to refine. Shift moves ten pixels. Escape clears."
           onpointerdown={begin} onpointermove={move} onpointerup={finish}
           onpointerleave={() => cursor = null}
-          onpointercancel={() => drag = null} onlostpointercapture={() => drag = null} onkeydown={(event) => keydown(event)}>
+          onpointercancel={() => drag = null} onlostpointercapture={() => drag = null}
+          onfocusout={() => { nudged = null; cursor = null; }} onkeydown={(event) => keydown(event)}>
           {#snippet legTag(x: number, y: number, dx: number, dy: number, text: string, anchor: 'middle' | 'start' | 'end')}
             {@const width = text.length * 6.7 + 16}
             {@const left = anchor === 'middle' ? -width / 2 : anchor === 'start' ? 0 : -width}
@@ -346,6 +358,9 @@
       {#if notice}<p role="status" class="notice"><Icon name="check" size={14} />{notice}</p>{/if}
     </aside>
   </div>
+  {#if magnified && !(panning && zoom > 1)}
+    <Magnifier {image} point={magnified} {surface} {sampler} />
+  {/if}
 </section>
 
 <style>
