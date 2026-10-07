@@ -34,19 +34,125 @@ A web application for aligning and comparing two similar pencil/charcoal sketch 
 # Install dependencies
 bun install
 
+# Configure the shared Supabase project (see Authentication setup below)
+cp .env.example .env.local
+
 # Start dev server
 bun run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
+## Authentication setup (shared Supabase identity)
+
+This is a **client-only Svelte 5/Vite SPA**, not SvelteKit or SSR. It uses
+`@supabase/supabase-js` with PKCE, browser-local session persistence, automatic
+token refresh, and one root auth subscription that is removed on teardown.
+`@supabase/ssr` and cookie-backed server clients are not appropriate here because
+there is no server rendering or trusted server endpoint. If SSR is added later,
+use per-request cookie-backed clients and verify users/claims on the server.
+
+The comparison app is mounted only after session initialization and successful
+authentication. Email registration, email/password sign-in, Google sign-in,
+confirmation/OAuth callbacks, password recovery, and sign-out are provided.
+Sign-out unmounts the comparison workspace and releases its browser resources;
+saved IndexedDB history is retained. **History is browser-local, not account
+scoped or synced**: other accounts signing in on the same browser profile see
+the same saved data. This UI gate is not a security boundary for data already
+stored on the device. Any future remote data must use Supabase RLS and verified
+identity at trusted boundaries; browser `getSession()` is for UI state only.
+The two apps share user IDs through one Supabase project but have independent
+browser sessions on separate origins. Six-month entitlements are out of scope.
+
+### Required configuration (not supplied by this repository)
+
+1. Use the **same Supabase project** as the other application. From its API
+   settings, set these in `.env.local` for local development and in the hosting
+   provider's build environment for production:
+   - `VITE_SUPABASE_URL`: the actual project's HTTPS URL.
+   - `VITE_SUPABASE_ANON_KEY`: its **public publishable key** (`sb_publishable_…`)
+     or legacy **anon** key. The variable name is retained for either public key.
+   Restart Vite after changing env values; rebuild/redeploy to change production
+   values. Missing configuration shows a blocking setup message, not an auth
+   bypass. All `VITE_` values are exposed in the built browser bundle.
+   **Never use a service-role/secret key, database password, JWT signing secret,
+   or Google client secret.** `.env` and `.env.*` are ignored except this example.
+2. Enable the Email provider, email signup, and **Confirm email** in Supabase
+   Authentication. Configure a production SMTP sender and password policy
+   (the UI requires at least 8 characters for new passwords; Supabase enforces
+   the actual policy). Keep confirmation/reset templates using Supabase's
+   `{{ .ConfirmationURL }}` so Supabase verifies the link and redirects to the
+   requested app. Do not replace it with a hard-coded Site URL or an SSR
+   token-hash endpoint this SPA does not implement. Test both email deliveries.
+3. In **Authentication → URL Configuration**, set Site URL to the shared
+   project's chosen primary production app. Add **exact** Redirect URLs for
+   each approved origin of **both** applications:
+
+   | Origin | Callback | Password reset |
+   | --- | --- | --- |
+   | Compare Sketch default local dev | `http://localhost:5173/auth/callback` | `http://localhost:5173/auth/reset-password` |
+   | Each actual production/approved preview origin | `<app-origin>/auth/callback` | `<app-origin>/auth/reset-password` |
+
+   Replace placeholders with the actual origins, without a trailing slash.
+   If Vite uses another port, allowlist that exact origin too (or start with
+   `bun run dev -- --strictPort`). Avoid broad production wildcards. The app
+   derives redirects from `window.location.origin`, never a caller-provided
+   `next` URL. Approved orb portals also require their exact callback/reset
+   URLs; a portal URL does not automatically authorize a Supabase redirect.
+4. In Google Cloud, create/configure a Web application OAuth client and consent
+   screen. Add the approved app origins as Authorized JavaScript origins and
+   register the **exact callback URL displayed by Supabase's Google provider**
+   as the Authorized redirect URI (normally
+   `https://<actual-project-ref>.supabase.co/auth/v1/callback`, not this app's
+   `/auth/callback`). Configure consent/test users or publish as appropriate.
+   Enable Google in Supabase and enter the Google Client ID and client secret
+   **only in Supabase's provider settings**, never in frontend env or Git.
+5. Configure the static host to serve `index.html` for `/auth/callback` and
+   `/auth/reset-password` as well as `/`. Vite dev/preview already provide this
+   SPA fallback. Use HTTPS in production. Without fallback, email/OAuth links
+   will return a host 404 before the app can handle them.
+
+The SPA explicitly exchanges callback codes exactly once, then calls
+`getSession()` before entering the workspace. PKCE requires confirmation/reset
+links to be opened in the **same browser and origin where the flow started**;
+an expired, reused, missing-verifier, or provider-error link shows a recoverable
+error. Authorization codes are removed from the address bar after handling.
+Starting another signup/reset/OAuth flow before completing the first can
+overwrite the stored verifier; request a fresh link when needed.
+
+### Verification
+
+```bash
+bun run build
+bun test tests/*.test.ts
+```
+
+A repeatable mock browser check is available without live credentials. In a
+disposable development environment with `agent-browser` installed, start Vite
+with the **test-only** public key and mock URL below, then run the browser test.
+The test starts/stops the local mock Auth endpoint, exercises the real Supabase
+client, and closes its disposable browser session. Never deploy these values.
+
+```bash
+VITE_SUPABASE_URL=http://127.0.0.1:54325 VITE_SUPABASE_ANON_KEY=sb_publishable_test_only bun run dev -- --port 5174 --strictPort
+# In another terminal:
+bun run tests/auth.browser.ts http://localhost:5174
+```
+
+Mock checks cannot establish that the real Google provider, SMTP sender,
+production redirects, or remote password policy are correctly configured.
+Before going live, verify signup → email confirmation, email/password login,
+Google consent → callback, reset email → password update → login with the new
+password, refresh persistence, and sign-out on the actual deployed origin.
+
 ## Amp Orbs
 
 `.agents/setup` uses Bun and Node from Amp's base image and installs dependencies
 with `bun install --frozen-lockfile`. Amp snapshots the prepared environment so
 fresh orbs can reuse it; a warm setup checks the lockfile without reinstalling
-unchanged dependencies. No secrets, databases, or additional system packages are
-required. `.agents/resume` only checks readiness and never installs dependencies.
+unchanged dependencies. Setup requires no secrets or additional system packages;
+running the app requires the public Supabase configuration above.
+`.agents/resume` only checks readiness and never installs dependencies.
 
 Start the supervised development server and get its authenticated portal URL:
 

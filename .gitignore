@@ -4,3 +4,7 @@ dist/
 *.log
 .DS_Store
 .amp/portals/
+.amp/in/artifacts/
+.env
+.env.*
+!.env.example

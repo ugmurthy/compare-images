@@ -1,9 +1,9 @@
 import { mount } from 'svelte';
 import './app.css';
-import App from './App.svelte';
+import Auth from './Auth.svelte';
 import Tooltip from './components/Tooltip.svelte';
 
-const app = mount(App, { target: document.getElementById('app')! });
+const app = mount(Auth, { target: document.getElementById('app')! });
 mount(Tooltip, { target: document.body });
 
 export default app;
