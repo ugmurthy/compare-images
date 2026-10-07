@@ -29,13 +29,15 @@
   let unit = $state('cm');
   let zoom = $state(1);
   let panning = $state(false);
+  let shiftHeld = $state(false);
+  let hideOverlays = $derived(shiftHeld && !calibrating);
   let surface: SVGSVGElement = $state()!;
   let surfaceWidth = $state(1);
   let surfaceHeight = $state(1);
   let drag = $state<{ index: number; id: number; x: number; y: number } | null>(null);
   let cursor = $state<Point | null>(null);
   let nudged = $state<Point | null>(null);
-  let magnified = $derived(drag ? drag.index >= 0 ? points[drag.index] : null : cursor ?? nudged);
+  let magnified = $derived(drag ? drag.index >= 0 ? !calibrating ? cursor ?? points[0] : points[drag.index] : null : cursor ?? nudged);
   let sampler = $state.raw<Sampler | null>(null);
   let pointShades = $state<(CrosshairShades | undefined)[]>([]);
   let cursorShades = $state<CrosshairShades>(DEFAULT_SHADES);
@@ -43,8 +45,11 @@
   let bounds = $derived(calibrating || !region
     ? { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight } : region);
   let scale = $derived(Math.min(surfaceWidth / bounds.width, surfaceHeight / bounds.height));
-  let result = $derived(points.length === 2 && calibration && !calibrating
-    ? measure(points as [Point, Point], calibration) : null);
+  let guidePoints = $derived<[Point, Point] | null>(calibrating
+    ? points.length === 2 ? [points[0], points[1]] : null
+    : points.length === 1 && cursor ? [points[0], cursor] : null);
+  let result = $derived(guidePoints && calibration && !calibrating
+    ? measure(guidePoints, calibration) : null);
   let candidate = $derived<Calibration | null>(points.length === 2 ? {
     points: [points[0], { x: axes === 'vertical' ? points[0].x : points[1].x, y: axes === 'horizontal' ? points[0].y : points[1].y }],
     horizontal: axes === 'vertical' ? null : horizontal ?? null,
@@ -147,9 +152,10 @@
     const p = eventPoint(event);
     if (p.x < bounds.x || p.y < bounds.y || p.x > bounds.x + bounds.width || p.y > bounds.y + bounds.height) return;
     const handle = (event.target as Element).closest('[data-endpoint]');
-    const index = handle ? Number(handle.getAttribute('data-endpoint')) : points.length;
+    const index = !calibrating ? 0 : handle ? Number(handle.getAttribute('data-endpoint')) : points.length;
     if (index > 1) return;
-    if (!handle) points = [...points, { x: p.x, y: p.y }];
+    if (!calibrating) points = [p];
+    else if (!handle) points = [...points, { x: p.x, y: p.y }];
     surface.focus({ preventScroll: true });
     drag = { index, id: event.pointerId, x: event.clientX, y: event.clientY };
     surface.setPointerCapture(event.pointerId);
@@ -162,7 +168,7 @@
     if (!drag) {
       cursor = null;
       if (event.pointerType !== 'mouse' || loading || saving || (panning && zoom > 1)
-        || (event.target as Element).closest('[data-endpoint]')) return;
+        || (calibrating && (event.target as Element).closest('[data-endpoint]'))) return;
       const p = eventPoint(event);
       if (p.x >= bounds.x && p.x <= bounds.x + bounds.width && p.y >= bounds.y && p.y <= bounds.y + bounds.height) cursor = p;
       return;
@@ -174,12 +180,14 @@
       drag.y = event.clientY;
       return;
     }
-    points = points.map((p, index) => index === drag!.index ? clamp(eventPoint(event)) : p);
+    if (!calibrating) cursor = clamp(eventPoint(event));
+    else points = points.map((p, index) => index === drag!.index ? clamp(eventPoint(event)) : p);
   }
 
   function finish(event: PointerEvent) {
     if (!drag || event.pointerId !== drag.id) return;
     move(event);
+    if (!calibrating && event.pointerType !== 'mouse') cursor = null;
     drag = null;
     surface.releasePointerCapture(event.pointerId);
   }
@@ -202,7 +210,8 @@
       else cursor = next;
     } else if ((event.key === 'Enter' || event.key === ' ') && index === undefined) {
       event.preventDefault();
-      if (points.length < 2) points = [...points, p];
+      if (!calibrating) points = [p];
+      else if (points.length < 2) points = [...points, p];
       cursor = null;
     }
   }
@@ -211,6 +220,11 @@
     return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
   }
 </script>
+
+<svelte:window
+  onkeydowncapture={(event) => { if (event.key === 'Shift') shiftHeld = true; }}
+  onkeyupcapture={(event) => { if (event.key === 'Shift') shiftHeld = event.shiftKey; }}
+  onblur={() => shiftHeld = false} />
 
 <section class="measure-page" aria-label="Measure reference">
   <header class="measure-head">
@@ -227,7 +241,7 @@
         <span class="step-hint" aria-live="polite">
           {#if loading}Loading…
           {:else if calibrating}{points.length === 0 ? 'Click the first corner of a known span' : points.length === 1 ? 'Click the opposite corner' : 'Drag the markers to refine, then save the scale'}
-          {:else}{points.length === 0 ? 'Click the first feature' : points.length === 1 ? 'Click the second feature' : 'Drag a marker to refine · Esc clears'}{/if}
+          {:else}{points.length === 0 ? 'Click to anchor Point 1' : 'Move to measure · Click to reanchor · Esc clears'}{/if}
         </span>
         <span class="tool-spacer"></span>
         {#if zoom > 1}<button class="btn icon" aria-label={panning ? 'Resume measuring' : 'Pan image'} title={panning ? 'Resume measuring' : 'Pan image'} aria-pressed={panning} onclick={() => { panning = !panning; cursor = null; }}><Icon name="pan" /></button>{/if}
@@ -237,10 +251,12 @@
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
         <svg bind:this={surface} viewBox="{bounds.x} {bounds.y} {bounds.width} {bounds.height}"
           style:width="{zoom * 100}%" style:height="calc(var(--image-height) * {zoom})" style:cursor={panning && zoom > 1 ? 'grab' : 'none'} role="application" tabindex="0"
-          aria-label="Measurement image. Click two points. Arrow keys move the cursor, Enter places a point. Tab to endpoints and use arrows to refine. Shift moves ten pixels. Escape clears."
+          aria-label={calibrating
+            ? 'Calibration image. Click two points. Arrow keys move the cursor, Enter places a point. Tab to endpoints and use arrows to refine. Shift moves ten pixels. Escape clears.'
+            : 'Measurement image. Click to anchor Point 1; move the cursor to measure. Each click starts a new measurement. Arrow keys move the cursor, Enter anchors Point 1. Tab to the anchor and use arrows to refine. Hold Shift to hide the cursor, guides and on-image labels; Shift with arrows moves ten pixels. Escape clears.'}
           onpointerdown={begin} onpointermove={move} onpointerup={finish}
           onpointerleave={() => cursor = null}
-          onpointercancel={() => drag = null} onlostpointercapture={() => drag = null}
+          onpointercancel={() => { drag = null; cursor = null; }} onlostpointercapture={() => drag = null}
           onfocusout={() => { nudged = null; cursor = null; }} onkeydown={(event) => keydown(event)}>
           {#snippet legTag(x: number, y: number, dx: number, dy: number, text: string, anchor: 'middle' | 'start' | 'end')}
             {@const width = text.length * 6.7 + 16}
@@ -253,36 +269,35 @@
           <!-- Clip to the measurable bounds: a part's neighbouring pixels would otherwise fill the letterbox but ignore clicks. -->
           <defs><clipPath id="{guideMask}-clip"><rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} /></clipPath></defs>
           <image href={image.src} width={image.naturalWidth} height={image.naturalHeight} clip-path="url(#{guideMask}-clip)" />
-          {#if points.length === 2}
+          {#if guidePoints}
             <defs><mask id={guideMask} maskUnits="userSpaceOnUse" x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height}>
               <rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} fill="white" />
-              {#each points as p}<circle cx={p.x} cy={p.y} r={6 / scale} fill="black" />{/each}
+              {#each guidePoints as p}<circle cx={p.x} cy={p.y} r={6 / scale} fill="black" />{/each}
             </mask></defs>
-            <g mask="url(#{guideMask})" pointer-events="none">
-              <path d="M {points[0].x} {points[0].y} H {points[1].x} V {points[1].y}" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="4 4" vector-effect="non-scaling-stroke" />
-              <path d="M {points[0].x} {points[0].y} H {points[1].x} V {points[1].y}" fill="none" stroke="#3050d0" stroke-width="1.25" stroke-dasharray="4 4" vector-effect="non-scaling-stroke" />
+            <g mask="url(#{guideMask})" pointer-events="none" style:visibility={hideOverlays ? 'hidden' : undefined}>
+              <path d="M {guidePoints[0].x} {guidePoints[0].y} H {guidePoints[1].x} V {guidePoints[1].y}" fill="none" stroke="#3050d0" stroke-width="1.25" stroke-dasharray="4 4" vector-effect="non-scaling-stroke" />
             </g>
             {#if result}
-              <g pointer-events="none" aria-hidden="true">
-                {#if result.horizontal && points[0].x !== points[1].x}
-                  {@render legTag((points[0].x + points[1].x) / 2, points[0].y, 0, points[1].y >= points[0].y ? -16 : 16, `↔ ${legLabel(result.horizontal, calibration?.horizontal)}`, 'middle')}
+              <g pointer-events="none" aria-hidden="true" style:visibility={hideOverlays ? 'hidden' : undefined}>
+                {#if result.horizontal && guidePoints[0].x !== guidePoints[1].x}
+                  {@render legTag((guidePoints[0].x + guidePoints[1].x) / 2, guidePoints[0].y, 0, guidePoints[1].y >= guidePoints[0].y ? -16 : 16, `↔ ${legLabel(result.horizontal, calibration?.horizontal)}`, 'middle')}
                 {/if}
-                {#if result.vertical && points[0].y !== points[1].y}
-                  {@render legTag(points[1].x, (points[0].y + points[1].y) / 2, points[1].x >= points[0].x ? 12 : -12, 0, `↕ ${legLabel(result.vertical, calibration?.vertical)}`, points[1].x >= points[0].x ? 'start' : 'end')}
+                {#if result.vertical && guidePoints[0].y !== guidePoints[1].y}
+                  {@render legTag(guidePoints[1].x, (guidePoints[0].y + guidePoints[1].y) / 2, guidePoints[1].x >= guidePoints[0].x ? 12 : -12, 0, `↕ ${legLabel(result.vertical, calibration?.vertical)}`, guidePoints[1].x >= guidePoints[0].x ? 'start' : 'end')}
                 {/if}
               </g>
             {/if}
           {/if}
           {#each points as p, index}
             <g transform="translate({p.x} {p.y}) scale({1 / scale})" data-endpoint={index}
-              role="button" tabindex="0" aria-label="Endpoint {index + 1}, x {format(p.x)}, y {format(p.y)}. Drag or use arrow keys."
+              role="button" tabindex="0" aria-label={calibrating ? `Endpoint ${index + 1}, x ${format(p.x)}, y ${format(p.y)}. Drag or use arrow keys.` : `Point 1 anchor, x ${format(p.x)}, y ${format(p.y)}. Use arrow keys to refine.`}
               onkeydown={(event) => { event.stopPropagation(); keydown(event, index); }}>
-              <circle r="22" fill="transparent" class="hit-target" style:cursor={drag?.index === index ? 'none' : 'grab'} />
+              <circle r="22" fill="transparent" class="hit-target" style:cursor={!calibrating || drag?.index === index ? 'none' : 'grab'} />
               <Crosshair shades={pointShades[index]} emphasis={drag?.index === index} />
             </g>
           {/each}
           {#if cursor}
-            <g class="placement-cursor" transform="translate({cursor.x} {cursor.y}) scale({1 / scale})" pointer-events="none"><Crosshair shades={cursorShades} /></g>
+            <g class="placement-cursor" transform="translate({cursor.x} {cursor.y}) scale({1 / scale})" pointer-events="none" style:visibility={hideOverlays ? 'hidden' : undefined}><Crosshair shades={cursorShades} /></g>
           {/if}
         </svg>
       </div>
@@ -337,9 +352,9 @@
             <button class="btn quiet" aria-label="New measurement" title="New measurement — clear current points" onclick={clearPoints} disabled={points.length === 0}><Icon name="plus" /><span aria-hidden="true">New</span></button>
           </div>
           <div class="point-steps" aria-hidden="true">
-            <span class:done={points.length >= 1}>Point 1</span><span class="line" class:done={points.length >= 2}></span><span class:done={points.length >= 2}>Point 2</span>
+            <span class:done={points.length >= 1}>Point 1 · anchor</span><span class="line" class:done={!!result}></span><span class:done={!!result}>Cursor</span>
           </div>
-          <p class="muted small">{points.length === 0 ? 'Click the first feature point on the image.' : points.length === 1 ? 'Click the second feature point.' : 'Drag endpoints to refine. Tab to a point for arrow-key nudging.'}</p>
+          <p class="muted small">{points.length === 0 ? 'Click a feature to anchor Point 1.' : 'Move the cursor to measure from Point 1. Click anywhere on the image to start a new measurement.'}</p>
           <div class="results" aria-live="polite">
             {#each ['horizontal', 'vertical'] as axis}
               {@const ratio = result?.[axis as 'horizontal' | 'vertical']}
@@ -351,14 +366,14 @@
               </div>
             {/each}
           </div>
-          <p class="muted small">Percentages are of the calibrated span. Zoom never changes distances; measurements aren't saved.</p>
+          <p class="muted small">Hold Shift to hide the cursor, guides and on-image labels. Percentages are of the calibrated span. Zoom never changes distances; measurements aren't saved.</p>
         </section>
       {/if}
       {#if error}<p role="alert" class="error">{error}</p>{/if}
       {#if notice}<p role="status" class="notice"><Icon name="check" size={14} />{notice}</p>{/if}
     </aside>
   </div>
-  {#if magnified && !(panning && zoom > 1)}
+  {#if magnified && !(panning && zoom > 1) && !hideOverlays}
     <Magnifier {image} point={magnified} {surface} {sampler} />
   {/if}
 </section>

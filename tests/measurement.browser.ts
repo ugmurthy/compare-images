@@ -31,7 +31,10 @@ export async function testMeasurement(): Promise<string> {
   async function waitFor(predicate: () => boolean) {
     for (let i = 0; i < 100; i++) {
       await tick();
-      if (predicate()) return;
+      if (predicate()) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        return;
+      }
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     throw new Error('Measurement UI did not settle');
@@ -53,31 +56,67 @@ export async function testMeasurement(): Promise<string> {
   try {
     component = mount(MeasureView, { target, props: { image, file, region: { x: 100, y: 150, width: 400, height: 200 }, onback: () => {} } });
     await waitFor(() => !!target.querySelector('.results'));
+    let surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
+    async function hover(x: number, y: number, element: Element = surface) {
+      const screen = new DOMPoint(x, y).matrixTransform(surface.getScreenCTM()!);
+      element.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: screen.x, clientY: screen.y }));
+      await tick();
+      return target.querySelector('.placement-cursor .marker')!;
+    }
+    await hover(420, 260);
+    check(!target.querySelector('.results')!.textContent!.includes('%'), 'Hovering before anchoring does not measure');
+    surface.dispatchEvent(new PointerEvent('pointerleave'));
+    await tick();
     await place(180, 190);
-    await place(420, 260);
+    await hover(420, 260);
     check(target.querySelector('.results')!.textContent!.includes('60%') && target.querySelector('.results')!.textContent!.includes('35%'), 'Part measurements use the full-reference pixel spans, not crop dimensions');
     check(target.querySelector('.results')!.textContent!.includes('1.2 cm') && target.querySelector('.results')!.textContent!.includes('1.05 cm'), 'Separate paper sizes produce correct absolute distances');
-    const endpoint = target.querySelector('[data-endpoint="1"]')!;
+    check(target.querySelectorAll('[data-endpoint]').length === 1, 'Only Point 1 is anchored, never the moving cursor');
+    check(target.querySelectorAll('path[stroke-dasharray]').length === 1, 'The guide is one dashed stroke, without a second halo stroke');
+    const endpoint = target.querySelector('[data-endpoint="0"]')!;
+    const overlays = [...target.querySelectorAll('path[stroke-dasharray], .placement-cursor, .leg-tag')];
+    check(overlays.length === 4, 'The visibility check includes the cursor, guide and both distance labels');
+    const positions = () => JSON.stringify(overlays.map((element) => [element.getAttribute('d'), element.getAttribute('transform'), element.textContent]));
+    const beforeHide = positions();
+    const beforeResults = target.querySelector('.results')!.textContent;
+    check(!!target.querySelector('.magnifier'), 'Magnifier is present before hiding');
+    key(endpoint, 'Shift', true);
+    await tick();
+    check(overlays.every((element) => getComputedStyle(element).visibility === 'hidden')
+      && !target.querySelector('.magnifier'), 'Shift hides cursor, both guide legs, on-image labels and magnifier even when the anchor has keyboard focus');
+    check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible'
+      && positions() === beforeHide && target.querySelector('.results')!.textContent === beforeResults, 'Hiding keeps the fixed anchor, coordinates and sidebar distances unchanged');
+    target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', shiftKey: true, bubbles: true }));
+    await tick();
+    check(overlays.every((element) => getComputedStyle(element).visibility === 'hidden'), 'Releasing one Shift key while the other is held keeps overlays hidden');
+    target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', bubbles: true }));
+    await tick();
+    check(overlays.every((element) => getComputedStyle(element).visibility === 'visible')
+      && positions() === beforeHide && !!target.querySelector('.magnifier'), 'Releasing Shift outside the image restores all overlays in exactly the same positions');
+    key(surface, 'Shift', true);
+    await hover(450, 300);
+    key(surface, 'ArrowRight', true);
+    await tick();
+    check(target.querySelectorAll('.results strong')[0].textContent === '70%'
+      && target.querySelectorAll('.results strong')[1].textContent === '55%'
+      && overlays.every((element) => getComputedStyle(element).visibility === 'hidden'), 'Hidden measurement stays live and Shift-arrow still moves the cursor ten pixels');
+    window.dispatchEvent(new Event('blur'));
+    await tick();
+    check(overlays.every((element) => getComputedStyle(element).visibility === 'visible'), 'Window blur prevents a lost Shift release from leaving overlays hidden');
+    await hover(420, 260);
     key(endpoint, 'ArrowRight');
     await tick();
-    check(target.querySelector('.results')!.textContent!.includes('60.25%'), 'Endpoint keyboard nudging updates results');
+    await hover(420, 260);
+    check(target.querySelector('.results')!.textContent!.includes('59.75%'), 'Anchor keyboard nudging updates subsequent live measurements');
     const strokes = (marker: Element) => [...marker.querySelectorAll('.arm, .ring')].map((part) => getComputedStyle(part).stroke);
     const ring = (marker: Element) => getComputedStyle(marker.querySelector('.ring')!).stroke;
     const arm = (marker: Element, name: string) => getComputedStyle(marker.querySelector(`[data-arm="${name}"]`)!).stroke;
     check([...endpoint.querySelectorAll('.marker .arm, .marker .ring')].every((part) => getComputedStyle(part).fill === 'none'), 'Crosshair center has no opaque fill');
-    check(strokes(endpoint.querySelector('.marker')!).every((stroke) => stroke === 'rgb(0, 0, 0)'), 'Measurement crosshair is black on a light background');
-    check(strokes(target.querySelector('[data-endpoint="0"] .marker')!).every((stroke) => stroke === 'rgb(255, 255, 255)'), 'Measurement crosshair is white on a dark background');
-    check(getComputedStyle(endpoint.querySelector('.hit-target')!).cursor === 'grab', 'Endpoint drag area uses the grab cursor');
+    check(strokes(endpoint.querySelector('.marker')!).every((stroke) => stroke === 'rgb(255, 255, 255)'), 'Measurement anchor is white on a dark background');
+    check(getComputedStyle(endpoint.querySelector('.hit-target')!).cursor === 'none', 'Measurement anchor does not suggest dragging');
     check(endpoint.querySelectorAll('.marker').length === 1 && endpoint.querySelectorAll('.marker .arm').length === 4
       && (endpoint.querySelector('.marker') as SVGGraphicsElement).getBBox().width === 36, 'One open crosshair with four single-stroke arms, without a duplicate halo');
-    const surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
     const cursorStyle = getComputedStyle(surface).cursor;
-    async function hover(x: number, y: number) {
-      const screen = new DOMPoint(x, y).matrixTransform(surface.getScreenCTM()!);
-      surface.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: screen.x, clientY: screen.y }));
-      await tick();
-      return target.querySelector('.placement-cursor .marker')!;
-    }
     let preview = await hover(200, 230);
     check(cursorStyle === 'none' && preview.innerHTML.replace(/style="[^"]*"/g, '') === endpoint.querySelector('.marker')!.innerHTML.replace(/style="[^"]*"/g, '')
       && strokes(preview).every((stroke) => stroke === 'rgb(255, 255, 255)'), 'Drawn placement cursor matches marker shape and contrasts with dark background');
@@ -90,35 +129,42 @@ export async function testMeasurement(): Promise<string> {
     check(ring(preview) === 'rgb(255, 255, 255)', 'Neutral texture retains white after a dark background');
     preview = await hover(396, 230);
     check(arm(preview, 'left') === 'rgb(255, 255, 255)' && arm(preview, 'right') === 'rgb(0, 0, 0)', 'Each arm adapts separately where the crosshair straddles a dark/light edge');
-    endpoint.querySelector('.hit-target')!.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
-    await tick();
-    check(!target.querySelector('.placement-cursor'), 'Placement preview hides in endpoint grab area');
+    await hover(181, 190, endpoint.querySelector('.hit-target')!);
+    check([...target.querySelectorAll('.results strong')].every((value) => value.textContent === '0%'), 'Hovering over the anchor produces zero distances instead of hiding the result');
     const capture = surface.setPointerCapture;
     const release = surface.releasePointerCapture;
     // Synthetic pointer events need capture stubbed; actual capture is exercised in the browser workflow.
     surface.setPointerCapture = () => {};
     surface.releasePointerCapture = () => {};
+    async function pointer(type: string, x: number, y: number, element: Element = surface) {
+      const screen = new DOMPoint(x, y).matrixTransform(surface.getScreenCTM()!);
+      element.dispatchEvent(new PointerEvent(type, { bubbles: true, isPrimary: true, pointerType: 'mouse', pointerId: 1, button: 0, clientX: screen.x, clientY: screen.y }));
+      await tick();
+    }
     try {
-      const screen = new DOMPoint(421, 260).matrixTransform(surface.getScreenCTM()!);
-      endpoint.querySelector('circle')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, isPrimary: true, pointerId: 1, button: 0, clientX: screen.x, clientY: screen.y }));
+      await pointer('pointerdown', 420, 260);
+      await pointer('pointerup', 420, 260);
+      await hover(300, 220);
+      check(target.querySelectorAll('[data-endpoint]').length === 1
+        && target.querySelectorAll('.results strong')[0].textContent === '30%'
+        && target.querySelectorAll('.results strong')[1].textContent === '20%', 'The next click replaces Point 1 rather than fixing Point 2; negative deltas remain absolute');
+      check(strokes(endpoint.querySelector('.marker')!).every((stroke) => stroke === 'rgb(0, 0, 0)'), 'Reanchored marker adapts to a light background');
+      await pointer('pointerdown', 410, 255, endpoint.querySelector('.hit-target')!);
+      await pointer('pointermove', 330, 215);
+      await pointer('pointerup', 330, 215);
+      check(endpoint.getAttribute('aria-label')!.includes('x 410, y 255')
+        && target.querySelectorAll('.results strong')[0].textContent === '20%'
+        && target.querySelectorAll('.results strong')[1].textContent === '20%', 'Clicking the old anchor hit area also reanchors; holding and moving never drags Point 1');
+      key(surface, 'Enter');
       await tick();
-      check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible' && getComputedStyle(surface).cursor === 'none', 'Active crosshair stays visible without a duplicate mouse cursor during dragging');
-      check(getComputedStyle(target.querySelector('[data-endpoint="0"] .marker')!).visibility === 'visible', 'The other endpoint stays visible');
-      const moved = new DOMPoint(390, 225).matrixTransform(surface.getScreenCTM()!);
-      surface.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: moved.x, clientY: moved.y }));
+      key(surface, 'ArrowRight', true);
       await tick();
-      const center = new DOMPoint(0, 0).matrixTransform((endpoint as SVGGraphicsElement).getScreenCTM()!);
-      check(Math.abs(center.x - moved.x) < 0.01 && Math.abs(center.y - moved.y) < 0.01
-        && getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible', 'Visible crosshair tracks the exact dragged point');
-      check(ring(endpoint.querySelector('.marker')!) === 'rgb(255, 255, 255)', 'Dragged crosshair switches to white over a dark background');
-      surface.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientX: screen.x, clientY: screen.y }));
-      await tick();
-      check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible' && getComputedStyle(surface).cursor === cursorStyle, 'Marker remains visible and placement cursor returns on release');
-      check(getComputedStyle(endpoint.querySelector('.hit-target')!).cursor === 'grab', 'Drag area restores the grab cursor on release');
-      endpoint.querySelector('circle')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, isPrimary: true, pointerId: 2, button: 0, clientX: screen.x, clientY: screen.y }));
-      surface.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 2 }));
-      await tick();
-      check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible', 'Marker returns on cancellation');
+      check(endpoint.getAttribute('aria-label')!.includes('x 330, y 215')
+        && target.querySelectorAll('.results strong')[0].textContent === '5%'
+        && target.querySelectorAll('.results strong')[1].textContent === '17.5%', 'Enter replaces the anchor; arrow keys measure live from the new anchor (cursor restarts at the part centre)');
+      await hover(430, 255);
+      check(target.querySelectorAll('.results strong')[0].textContent === '25%'
+        && target.querySelectorAll('.results strong')[1].textContent === '20%', 'Cursor movement continuously updates both axis results');
     } finally {
       surface.setPointerCapture = capture;
       surface.releasePointerCapture = release;
@@ -139,10 +185,21 @@ export async function testMeasurement(): Promise<string> {
     }
     await checkZoom('2', 300, 250);
     await checkZoom('4', 300, 250);
-    check(target.querySelector('.results')!.textContent!.includes('60.25%'), 'Centered zoom does not change image-space measurements');
+    await hover(430, 255);
+    check(target.querySelectorAll('.results strong')[0].textContent === '25%'
+      && target.querySelectorAll('.results strong')[1].textContent === '20%', 'Zoom does not change image-space live measurements');
+    surface.dispatchEvent(new PointerEvent('pointerleave'));
+    await tick();
+    check(!target.querySelector('path[stroke-dasharray]') && !target.querySelector('.results')!.textContent!.includes('%')
+      && target.querySelectorAll('[data-endpoint]').length === 1, 'Leaving the image hides live results but keeps Point 1');
+    key(surface, 'Escape');
+    await tick();
+    await hover(430, 255);
+    check(target.querySelectorAll('[data-endpoint]').length === 0 && !target.querySelector('.results')!.textContent!.includes('%'), 'Escape removes the anchor and the measurement');
     await unmount(component);
     component = mount(MeasureView, { target, props: { image, file, onback: () => {} } });
     await waitFor(() => !!target.querySelector('.results'));
+    surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
     check(target.querySelectorAll('[data-endpoint]').length === 0 && !target.querySelector('.results')!.textContent!.includes('%'), 'Measurements disappear when the view is reopened');
     check(JSON.stringify(await loadCalibration(file)) === JSON.stringify(calibration), 'Calibration survives reopening');
     target.querySelector<HTMLButtonElement>('[aria-label="Redo calibration"]')!.click();
@@ -153,6 +210,32 @@ export async function testMeasurement(): Promise<string> {
     await place(500, 100);
     check(ring(target.querySelector('[data-endpoint="0"] .marker')!) === 'rgb(255, 255, 255)', 'Reference calibration uses the same white crosshairs');
     check(getComputedStyle(target.querySelector('[data-endpoint="0"] .hit-target')!).cursor === 'grab', 'Reference calibration drag area also uses the grab cursor');
+    key(surface, 'Shift', true);
+    await tick();
+    check(getComputedStyle(target.querySelector('path[stroke-dasharray]')!).visibility === 'visible', 'Shift does not hide the two-point calibration guide');
+    surface.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', bubbles: true }));
+    await tick();
+    const calibrationEndpoint = target.querySelector('[data-endpoint="1"]')!;
+    surface.setPointerCapture = () => {};
+    surface.releasePointerCapture = () => {};
+    try {
+      await hover(500, 100, calibrationEndpoint.querySelector('.hit-target')!);
+      check(!target.querySelector('.placement-cursor'), 'Calibration still hides the cursor over a draggable endpoint');
+      await pointer('pointerdown', 500, 100, calibrationEndpoint.querySelector('.hit-target')!);
+      await pointer('pointermove', 490, 110);
+      check(calibrationEndpoint.getAttribute('aria-label')!.includes('x 490, y 110')
+        && target.querySelectorAll('[data-endpoint]').length === 2, 'Calibration still drags Point 2 without replacing Point 1');
+      await pointer('pointerup', 500, 100);
+      check(getComputedStyle(calibrationEndpoint.querySelector('.hit-target')!).cursor === 'grab', 'Calibration restores the grab cursor on release');
+    } finally {
+      surface.setPointerCapture = capture;
+      surface.releasePointerCapture = release;
+    }
+    // Use exact keyboard coordinates for the zero-span boundary, avoiding pointer matrix roundoff.
+    key(surface, 'Escape');
+    await tick();
+    await place(100, 100);
+    await place(500, 100);
     const save = target.querySelector<HTMLButtonElement>('[aria-label="Save calibration"]')!;
     check(save.disabled, 'A zero vertical span cannot calibrate both axes');
     const axes = target.querySelectorAll('select')[1];
@@ -173,9 +256,9 @@ export async function testMeasurement(): Promise<string> {
     const replaced = await loadCalibration(file);
     check(replaced?.horizontal === null && replaced.vertical === null && replaced.points[1].y === 100, 'Redo replaces the one calibration with a percent-only horizontal reference');
     await place(200, 200);
-    await place(400, 300);
+    await hover(400, 300);
     check(target.querySelectorAll('.results strong')[0].textContent === '50%' && target.querySelectorAll('.results strong')[1].textContent === '—', 'An uncalibrated axis is unavailable');
-    return 'PASS: per-arm adaptive crosshairs, part coordinates, independent axis ratios and paper sizes, keyboard nudging, hollow markers, zoom invariance, ephemeral measurements, persisted calibration, single-axis recalibration, and invalid-size rejection';
+    return 'PASS: Shift hold/release visibility with exact position restoration, dual-Shift handling and blur recovery, live hidden measurements, click/keyboard reanchoring, fixed Point 1, single dashed guide, adaptive crosshairs, part coordinates, zoom invariance, clearing, unchanged two-point calibration, single-axis recalibration, and invalid-size rejection';
   } finally {
     if (component) await unmount(component);
     target.remove();
