@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, setContext, tick } from 'svelte';
+  import type { Snippet } from 'svelte';
   import {
     alignImages,
     alignImagesManually,
@@ -25,6 +26,8 @@
   import type { Region } from './lib/region';
   import ImageDrop from './components/ImageDrop.svelte';
   import type { ComparisonMode } from './components/ModeSwitch.svelte';
+
+  let { account }: { account?: Snippet } = $props();
 
   const magnifierPreference = $state({ enabled: true });
   try {
@@ -722,6 +725,7 @@
       <span class="runtime-dot"></span>
       {#if cvState === 'error'}<span class="runtime-text">Retry</span>{:else if cvState !== 'ready'}<span class="runtime-text">Loading</span>{/if}
     </button>
+    {@render account?.()}
   </div>
 </header>
 
@@ -1101,9 +1105,15 @@
     .save-dialog { border-radius: var(--radius-lg) var(--radius-lg) 0 0; max-height: calc(100dvh - env(safe-area-inset-top) - 1rem); padding-bottom: env(safe-area-inset-bottom); width: 100%; }
     .save-panel { padding: 22px 18px; }
   }
-  @media (max-width: 359px) {
+  @media (max-width: 479px) {
     .brand { display: none; }
+    .app-bar { grid-template-columns: 1fr auto; }
+  }
+  @media (max-width: 359px) {
     .app-bar { gap: 4px; grid-template-columns: 1fr auto; padding: 8px max(4px, env(safe-area-inset-right)) 8px max(4px, env(safe-area-inset-left)); }
+    .primary-nav > button { min-width: 32px; width: 32px; }
+    .app-status { gap: 2px; }
+    .app-status :global(.storage .meter) { display: none; }
     .runtime-text { display: none; }
   }
 </style>

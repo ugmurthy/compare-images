@@ -3,6 +3,7 @@
   import type { Session } from '@supabase/supabase-js';
   import App from './App.svelte';
   import Icon from './components/Icon.svelte';
+  import AccountMenu from './components/AccountMenu.svelte';
   import { authConfigurationError, supabase } from './lib/supabase';
 
   type Mode = 'login' | 'register' | 'forgot' | 'reset';
@@ -242,13 +243,15 @@
     </section>
   </main>
 {:else}
-  <div class="account-bar">
-    <span title={session.user.email}>Signed in as <strong>{session.user.email ?? 'your account'}</strong></span>
-    <button class="btn quiet" onclick={signOut} disabled={busy}>{busy ? 'Signing out…' : 'Sign out'}</button>
-  </div>
   {#if error}<p class="account-message auth-error" role="alert">{error}</p>{/if}
   {#if notice}<p class="account-message auth-notice" role="status">{notice}</p>{/if}
-  {#key session.user.id}<App />{/key}
+  {#key session.user.id}
+    <App>
+      {#snippet account()}
+        {#if session}<AccountMenu user={session.user} {busy} onSignOut={signOut} />{/if}
+      {/snippet}
+    </App>
+  {/key}
 {/if}
 
 <style>
@@ -268,13 +271,9 @@
   .auth-notice { background: var(--ok-tint); border-radius: var(--radius-sm); color: var(--ok); padding: 12px; }
   .auth-links { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
   .local-note { border-top: 1px solid var(--hairline); font-size: 0.78rem; padding-top: 16px; }
-  .account-bar { align-items: center; background: var(--surface-2); border-bottom: 1px solid var(--hairline); display: flex; gap: 12px; justify-content: flex-end; min-width: 0; padding: 4px 24px; }
-  .account-bar span { color: var(--ink-muted); font-size: 0.8rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .account-bar strong { color: var(--ink); font-weight: 500; }
   .account-message { margin: 8px 24px; }
   @media (max-width: 479px) {
     .auth-page { padding: 20px 12px; }
     .auth-card { gap: 16px; padding: 24px 20px; }
-    .account-bar { padding: 4px 12px; }
   }
 </style>

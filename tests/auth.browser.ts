@@ -90,6 +90,7 @@ function check(value: boolean, message: string) {
 }
 const click = (text: string) => browser('find', 'role', 'button', 'click', '--name', text, '--exact');
 const waitText = (text: string) => browser('wait', '--fn', `document.body.textContent.includes(${JSON.stringify(text)})`);
+const waitForApp = () => browser('wait', '.account-avatar');
 async function expectDOM(expression: string, message: string) {
   check(await browser('eval', expression) === 'true', message);
 }
@@ -98,6 +99,7 @@ async function capture(state: string) {
     await browser('set', 'viewport', `${width}`, `${height}`, '2');
     await browser('eval', 'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
     await expectDOM('document.documentElement.scrollWidth <= innerWidth', `${state}: no horizontal overflow at ${width}px`);
+    await expectDOM('(() => { if (!document.querySelector(".app-bar")) return true; const nav = document.querySelector(".primary-nav").getBoundingClientRect(); const tools = document.querySelector(".app-status").getBoundingClientRect(); const brand = document.querySelector(".brand").getBoundingClientRect(); return nav.right <= tools.left && (!brand.width || brand.right <= nav.left); })()', `${state}: header groups do not overlap at ${width}px`);
     if (artifacts) await browser('screenshot', '--full', `${artifacts}/${state}-${name}.png`);
   }
 }
@@ -105,6 +107,10 @@ async function login(password = currentPassword) {
   await browser('fill', '#auth-email', user.email);
   await browser('fill', '#auth-password', password);
   await click('Sign in');
+}
+async function signOut() {
+  await click('Account menu');
+  await browser('find', 'role', 'menuitem', 'click', '--name', 'Sign out', '--exact');
 }
 function last(path: string) {
   const record = records.findLast((entry) => entry.path === `/auth/v1/${path}`);
@@ -141,18 +147,40 @@ try {
   await expectDOM('!document.querySelector(".app-bar") && document.querySelector("#auth-password").value === ""', 'Confirmation required; password cleared');
   await capture('registration-sent');
   await browser('open', `${origin}/auth/callback?code=confirmation-code&next=https://untrusted.example`);
-  await waitText('Signed in as');
+  await waitForApp();
   check(await browser('get', 'url') === `${origin}/`, 'Callback strips code, never follows next redirect');
   check(records.filter((record) => record.body.auth_code === 'confirmation-code').length === 1, 'Code exchanged exactly once');
   await browser('reload');
-  await waitText('Signed in as');
+  await waitForApp();
   await capture('workspace');
+  await expectDOM('document.querySelector(".account-avatar").closest(".account").previousElementSibling.matches(".runtime-pill") && !document.querySelector(".account-bar")', 'Avatar follows OpenCV status, separate account bar removed');
+  await click('Account menu');
+  await expectDOM('document.querySelector(".account-avatar").getAttribute("aria-expanded") === "true" && document.activeElement.getAttribute("role") === "menuitem" && document.querySelector(".account-menu").textContent.includes("artist@example.test")', 'Menu exposes identity and focuses sign-out');
+  await capture('account-menu');
+  await browser('press', 'Escape');
+  await expectDOM('!document.querySelector(".account-menu") && document.activeElement.matches(".account-avatar")', 'Escape closes menu and restores avatar focus');
+  await browser('press', 'ArrowDown');
+  await expectDOM('document.querySelector(".account-menu") !== null && document.activeElement.getAttribute("role") === "menuitem"', 'Arrow key opens menu');
+  await browser('press', 'Tab');
+  await expectDOM('!document.querySelector(".account-menu")', 'Tab leaves and closes menu');
+  await click('Account menu');
+  await browser('click', '.hero p:last-child');
+  await expectDOM('!document.querySelector(".account-menu")', 'Outside click closes menu');
+  await browser('set', 'viewport', '320', '844', '2');
+  await expectDOM('document.documentElement.scrollWidth <= innerWidth', 'Avatar fits compact 320px header');
+  await browser('set', 'viewport', '390', '844', '2');
+  await browser('select', 'select[aria-label="Color theme"]', 'dark');
+  await capture('workspace-dark');
+  await click('Account menu');
+  await capture('account-menu-dark');
+  await browser('press', 'Escape');
+  await browser('select', 'select[aria-label="Color theme"]', 'light');
   await browser('click', '.primary-nav button:nth-child(3)');
   await waitText('Projects, comparisons, and saved parts');
   await browser('click', '.primary-nav button:first-child');
   await expectDOM('document.querySelector(".app-bar") !== null && document.querySelectorAll(".drop-zone").length === 2', 'Original app navigation and upload controls remain');
   signOutFails = true;
-  await click('Sign out');
+  await signOut();
   await waitText('session revocation could not be confirmed');
   await expectDOM('!document.querySelector(".app-bar")', 'Remote sign-out failure still clears local session and unmounts the workspace');
   await capture('signout-warning');
@@ -160,15 +188,15 @@ try {
   await browser('reload');
   await waitText('Welcome back');
   await login();
-  await waitText('Signed in as');
-  await click('Sign out');
+  await waitForApp();
+  await signOut();
   await waitText('Welcome back');
   await expectDOM('!document.querySelector(".app-bar")', 'Sign-out unmounts protected app');
   await browser('reload');
   await waitText('Welcome back');
   await login();
-  await waitText('Signed in as');
-  await click('Sign out');
+  await waitForApp();
+  await signOut();
   await waitText('Welcome back');
 
   await click('Forgot password?');
@@ -195,26 +223,26 @@ try {
   await click('Update password');
   await waitText('Your password has been updated.');
   check(last('user').body.password === 'updated-test-password', 'Password update sent independently chosen new password');
-  await click('Sign out');
+  await signOut();
   await waitText('Welcome back');
   await login('initial-test-password');
   await waitText('Unable to sign in.');
   await login('updated-test-password');
-  await waitText('Signed in as');
+  await waitForApp();
 
   // An existing session must not conceal a failed/expired callback.
   await browser('open', `${origin}/auth/callback?code=expired-code`);
   await waitText('We couldn’t use this link');
   await expectDOM('!document.querySelector(".app-bar")', 'Failed callback blocks the app even with a saved session');
   await browser('open', origin);
-  await waitText('Signed in as');
-  await click('Sign out');
+  await waitForApp();
+  await signOut();
   await waitText('Welcome back');
   await click('Continue with Google');
-  await waitText('Signed in as');
+  await waitForApp();
   check(last('authorize').query.get('provider') === 'google' && last('authorize').query.get('redirect_to') === `${origin}/auth/callback`, 'Google provider and redirect exact');
   check(last('authorize').query.get('code_challenge_method') === 's256', 'Google uses PKCE');
-  await click('Sign out');
+  await signOut();
   await waitText('Welcome back');
   for (const path of ['/auth/callback', '/auth/reset-password', '/auth/callback?error=access_denied&error_description=Private-provider-detail', '/auth/reset-password?code=expired-code']) {
     await browser('open', origin + path);
@@ -230,7 +258,7 @@ try {
   await browser('open', `${origin}/auth/callback?code=empty-code`);
   await waitText('We couldn’t use this link');
   await expectDOM('!document.querySelector(".app-bar")', 'Successful HTTP response without session must not unlock the app');
-  console.log('PASS: auth gate; accessible forms; general errors; registration + PKCE confirmation; email login; persistence; sign-out success/failure; reset request/recovery/update/failure; Google PKCE; invalid/missing/denied/no-session callbacks; safe redirects; desktop + narrow overflow checks.');
+  console.log('PASS: auth gate; accessible forms; general errors; registration + PKCE confirmation; email login; persistence; account avatar placement/menu/keyboard/dismissal; light + dark layouts; sign-out success/failure; reset request/recovery/update/failure; Google PKCE; invalid/missing/denied/no-session callbacks; safe redirects; desktop + narrow overflow checks.');
 } finally {
   await browser('close');
   await mock.stop(true);
