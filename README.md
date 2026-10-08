@@ -145,6 +145,115 @@ Before going live, verify signup → email confirmation, email/password login,
 Google consent → callback, reset email → password update → login with the new
 password, refresh persistence, and sign-out on the actual deployed origin.
 
+## Docker / hosted InstaCloud deployment
+
+The production image builds with pinned Bun and a frozen lockfile, then copies
+only `dist/` into a digest-pinned, non-root nginx image. It listens on `0.0.0.0:8080`
+by default (`PORT` can override it), provides `/healthz`, and falls back to the SPA
+for `/auth/callback` and `/auth/reset-password`. Hashed Vite assets are immutable;
+HTML and the pinned OpenCV file revalidate. Missing scripts return 404. Callback
+query strings are omitted from access logs. No database, storage service, volume,
+or Supabase secret is needed by this browser-only app.
+
+Follow the current [InstaCloud introduction](https://docs.instacloud.com/introduction),
+[canonical agent setup](https://instacloud.com/prompt.md), and installed `insta`
+skill. InstaCloud recommends a static host for an SPA whose backend lives elsewhere;
+this container is provided for an explicitly chosen hosted-compute deployment.
+
+### Build configuration
+
+`VITE_` variables are compiled into JavaScript. Setting InstaCloud **runtime**
+secrets does not configure this build. Docker accepts the two public build args:
+
+```bash
+docker build \
+  --build-arg VITE_SUPABASE_URL="$VITE_SUPABASE_URL" \
+  --build-arg VITE_SUPABASE_ANON_KEY="$VITE_SUPABASE_ANON_KEY" \
+  -t compare-images:production .
+docker run --rm -p 8080:8080 compare-images:production
+```
+
+The current InstaCloud source-deploy CLI has no build-arg option. Instead copy
+`deploy/public-build.example.json` to **Git-ignored** `deploy/public-build.json`
+and fill in **only** the actual shared project's HTTPS URL and **public**
+publishable/anon key. That file takes precedence over Docker build args. Do not
+put a service-role key, private token, password, or any other variable in it.
+Unlike `.env*`, this deliberately public-only file enters the remote Docker build
+context. All other local env files and `.insta` credentials are excluded.
+
+Validate the public file **before uploading** it with `insta deploy`:
+
+```bash
+bun run deploy/build.ts
+```
+
+The container build fails if either value is missing, a privileged key is used,
+or the JSON contains extra fields. Rebuild/redeploy when public values change;
+the runtime image contains neither Bun nor the build configuration file.
+
+### Hosted deployment
+
+This branch is linked to the independent **compare-images** project
+`4913e2a8-2bca-4220-aee5-d9b309f93df7`, InstaCloud branch `instacloud-deploy`,
+compute service `web` (port 8080, scale-to-zero). The separate `insta-auth`
+project is not part of this deployment. A fresh clone inherits the project
+binding but must authenticate and establish its own agent session.
+
+```bash
+npx -y insta@latest --agent agent setup --yes
+insta --agent status --json
+insta --agent login --device  # if needed; owner approves the printed link/code
+# Only if NOT already linked, the owner chooses ONE:
+insta --agent project create compare-images
+# OR: insta --agent project link <existing-project-id>
+insta --agent agent setup --yes
+insta --agent agent policy get --json
+# Only if the branch/service does not already exist:
+insta --agent branch create instacloud-deploy
+insta --agent branch switch instacloud-deploy
+insta --agent service add compute web --port 8080
+bun run deploy/build.ts
+insta --agent build . --port 8080 --explain
+insta --agent deploy . --branch instacloud-deploy --group web --port 8080
+insta --agent agent manifest --json
+```
+
+If the directory is already linked, reuse the project and inspect its branches
+and services instead of creating duplicates. Commit `.insta/project.json` once
+linked; never commit `.insta/agent-session.json` or login credentials. Relay any
+approval gate to an owner/admin; an agent must not approve itself.
+
+Poll the printed HTTPS URL until it serves 200 (allow a cold start), then run
+`bun run tests/deploy.http.ts <live-url>`. Add that exact origin's `/auth/callback`
+and `/auth/reset-password` to the shared Supabase Redirect URLs, preserving the
+other app's entries and primary Site URL. Complete the live email/Google flows
+listed above. The default InstaCloud URL needs no DNS changes. For a custom
+domain, the owner first chooses the hostname; `insta --agent domain attach
+<hostname> --branch instacloud-deploy --group web` prints the DNS records to add
+at the registrar. Wait for TLS/domain verification, then allowlist the custom
+origin in Supabase too. Do not change nameservers or purchase a domain implicitly.
+
+### Container verification without live credentials
+
+```bash
+bun run build
+bun test tests/*.test.ts
+# Ensure deploy/public-build.json is absent so these TEST-ONLY args are used:
+docker build \
+  --build-arg VITE_SUPABASE_URL=http://127.0.0.1:54325 \
+  --build-arg VITE_SUPABASE_ANON_KEY=sb_publishable_test_only \
+  -t compare-images:auth-test .
+docker run --rm -p 8080:8080 --read-only --tmpfs /tmp \
+  --tmpfs /etc/nginx/conf.d:uid=101,gid=101 \
+  --cap-drop ALL --security-opt no-new-privileges compare-images:auth-test
+# In another terminal (Linux; browser and mock Auth run on the host):
+bun run tests/deploy.http.ts http://localhost:8080
+bun run tests/auth.browser.ts http://localhost:8080
+```
+
+Never deploy this test image or the mock public configuration. Browser tests run
+the real Supabase client against a local mock, not live SMTP or Google settings.
+
 ## Amp Orbs
 
 `.agents/setup` uses Bun and Node from Amp's base image and installs dependencies

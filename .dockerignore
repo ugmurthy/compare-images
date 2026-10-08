@@ -1,0 +1,22 @@
+# Allowlist: no Git metadata, auth/session files, dependencies, env files,
+# tests, local artifacts, or InstaCloud credentials enter the build context.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!bun.lock
+!index.html
+!svelte.config.js
+!tsconfig.json
+!vite.config.ts
+!src/
+!src/**
+!public/
+!public/**
+!deploy/
+!deploy/build.ts
+!deploy/nginx.conf.template
+!deploy/public-build.json
+**/.env*
+**/*.pem
+**/*.key
