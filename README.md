@@ -151,9 +151,11 @@ The production image builds with pinned Bun and a frozen lockfile, then copies
 only `dist/` into a digest-pinned, non-root nginx image. It listens on `0.0.0.0:8080`
 by default (`PORT` can override it), provides `/healthz`, and falls back to the SPA
 for `/auth/callback` and `/auth/reset-password`. Hashed Vite assets are immutable;
-HTML and the pinned OpenCV file revalidate. Missing scripts return 404. Callback
-query strings are omitted from access logs. No database, storage service, volume,
-or Supabase secret is needed by this browser-only app.
+HTML and the pinned OpenCV file revalidate at the origin (the hosted edge caches
+the versioned OpenCV file). Missing scripts return 404. Request logging is
+disabled to avoid callback-code logging, and nginx uses inherited stderr rather
+than reopening root-owned microVM stdio. No database, storage service, volume,
+or Supabase private key is needed by this browser-only app.
 
 Follow the current [InstaCloud introduction](https://docs.instacloud.com/introduction),
 [canonical agent setup](https://instacloud.com/prompt.md), and installed `insta`
@@ -181,6 +183,24 @@ put a service-role key, private token, password, or any other variable in it.
 Unlike `.env*`, this deliberately public-only file enters the remote Docker build
 context. All other local env files and `.insta` credentials are excluded.
 
+The owner-configured public values for this deployment are stored as secrets on
+the project's `main` branch, **not** on `instacloud-deploy`. Retrieve them without
+printing values, validate that they are public, and write only those two fields:
+
+```bash
+insta --agent run --branch main -- bun -e '
+  import { publicBuildEnvironment } from "./deploy/build.ts";
+  import { chmod } from "node:fs/promises";
+  const config = publicBuildEnvironment({
+    VITE_SUPABASE_URL: Bun.env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_ANON_KEY: Bun.env.VITE_SUPABASE_ANON_KEY
+  });
+  if (!config.VITE_SUPABASE_URL.startsWith("https://")) throw new Error("Production requires HTTPS");
+  await Bun.write("deploy/public-build.json", JSON.stringify(config));
+  await chmod("deploy/public-build.json", 0o600);
+'
+```
+
 Validate the public file **before uploading** it with `insta deploy`:
 
 ```bash
@@ -198,6 +218,14 @@ This branch is linked to the independent **compare-images** project
 compute service `web` (port 8080, scale-to-zero). The separate `insta-auth`
 project is not part of this deployment. A fresh clone inherits the project
 binding but must authenticate and establish its own agent session.
+
+Live app: [Compare Sketch](https://prod-instacloud-deploy-web-b7858e-0027e6mw18e.compute.instacloud-edge.com).
+The owner confirmed the Supabase callback/reset redirects are allowlisted. Live
+checks confirmed the public key is accepted, email and Google are enabled,
+signup is enabled, and email confirmation is required. Inbox delivery, successful
+email confirmation/recovery, Google consent, and authenticated app access must
+still be tested with an owner-controlled account; public configuration checks
+cannot establish SMTP delivery or those completed flows.
 
 ```bash
 npx -y insta@latest --agent agent setup --yes
@@ -243,6 +271,7 @@ docker build \
   --build-arg VITE_SUPABASE_URL=http://127.0.0.1:54325 \
   --build-arg VITE_SUPABASE_ANON_KEY=sb_publishable_test_only \
   -t compare-images:auth-test .
+sh tests/deploy.stdio.sh compare-images:auth-test
 docker run --rm -p 8080:8080 --read-only --tmpfs /tmp \
   --tmpfs /etc/nginx/conf.d:uid=101,gid=101 \
   --cap-drop ALL --security-opt no-new-privileges compare-images:auth-test

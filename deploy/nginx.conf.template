@@ -4,17 +4,15 @@ map "$status:$uri" $cache_control {
   ~:/healthz$ "no-store";
 }
 
-# Access logs omit query strings: Supabase callbacks contain authorization codes.
-log_format spa '$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent';
-
 server {
   listen ${PORT};
   server_name _;
   server_tokens off;
   root /usr/share/nginx/html;
   index index.html;
-  access_log /dev/stdout spa;
-  error_log /dev/stderr warn;
+  # Never reopen root-owned microVM stdio or log callback authorization codes.
+  access_log off;
+  error_log stderr warn;
 
   add_header Cache-Control $cache_control always;
   add_header X-Content-Type-Options nosniff always;
