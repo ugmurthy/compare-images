@@ -8,6 +8,9 @@
   let container: HTMLDivElement;
   let trigger: HTMLButtonElement;
   let signOutItem = $state<HTMLButtonElement>();
+  let failedAvatar = $state<string>();
+  const avatarUrl = $derived([user.user_metadata.avatar_url, user.user_metadata.picture]
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0));
   const initial = $derived((user.email?.charAt(0) || '?').toUpperCase());
 
   async function openMenu() {
@@ -47,7 +50,11 @@
   <button class="account-avatar" bind:this={trigger} id={`${id}-trigger`} type="button"
     aria-label="Account menu" title="Account menu" aria-haspopup="menu" aria-expanded={open}
     aria-controls={open ? `${id}-menu` : undefined} onclick={() => open ? closeMenu() : void openMenu()}>
-    <span aria-hidden="true">{initial}</span>
+    {#if avatarUrl && avatarUrl !== failedAvatar}
+      <img src={avatarUrl} alt="" referrerpolicy="no-referrer" onerror={() => failedAvatar = avatarUrl} />
+    {:else}
+      <span aria-hidden="true">{initial}</span>
+    {/if}
   </button>
   {#if open}
     <div class="account-menu popover" id={`${id}-menu`} role="menu" aria-labelledby={`${id}-trigger`}>
@@ -64,7 +71,8 @@
 
 <style>
   .account { flex: none; position: relative; }
-  .account-avatar { align-items: center; background: var(--accent-tint); border: 1px solid var(--accent-ring); border-radius: 50%; color: var(--accent); cursor: pointer; display: flex; font-size: 0.85rem; font-weight: 600; height: 36px; justify-content: center; margin: 2px; width: 36px; }
+  .account-avatar { align-items: center; background: var(--accent-tint); border: 1px solid var(--accent-ring); border-radius: 50%; color: var(--accent); cursor: pointer; display: flex; font-size: 0.85rem; font-weight: 600; height: 36px; justify-content: center; margin: 2px; padding: 0; width: 36px; }
+  .account-avatar img { border-radius: 50%; height: 100%; object-fit: cover; width: 100%; }
   .account-avatar:hover, .account-avatar[aria-expanded='true'] { background: var(--accent); color: var(--on-accent); }
   .account-menu { max-width: calc(100vw - 24px); padding: 6px; position: absolute; right: 0; top: calc(100% + 10px); width: 280px; z-index: 40; }
   .account-details { border-bottom: 1px solid var(--hairline); display: grid; gap: 4px; margin-bottom: 6px; padding: 12px; }
