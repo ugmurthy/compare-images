@@ -30,6 +30,8 @@
   let zoom = $state(1);
   let panning = $state(false);
   let shiftHeld = $state(false);
+  let lineColor = $state('#3050d0');
+  const lineColors: Record<string, string> = { w: '#ffffff', r: '#ff0000', y: '#ffff00', b: '#3050d0', k: '#000000' };
   let hideOverlays = $derived(shiftHeld && !calibrating);
   let surface: SVGSVGElement = $state()!;
   let surfaceWidth = $state(1);
@@ -219,10 +221,21 @@
   function format(n: number) {
     return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
   }
+
+  function windowKeydown(event: KeyboardEvent) {
+    if (event.key === 'Shift') shiftHeld = true;
+    if (loading || saving || calibrating || event.ctrlKey || event.metaKey || event.altKey || event.isComposing
+      || (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]'))) return;
+    const color = lineColors[event.key.toLowerCase()];
+    if (color) {
+      event.preventDefault();
+      lineColor = color;
+    }
+  }
 </script>
 
 <svelte:window
-  onkeydowncapture={(event) => { if (event.key === 'Shift') shiftHeld = true; }}
+  onkeydowncapture={windowKeydown}
   onkeyupcapture={(event) => { if (event.key === 'Shift') shiftHeld = event.shiftKey; }}
   onblur={() => shiftHeld = false} />
 
@@ -253,7 +266,7 @@
           style:width="{zoom * 100}%" style:height="calc(var(--image-height) * {zoom})" style:cursor={panning && zoom > 1 ? 'grab' : 'none'} role="application" tabindex="0"
           aria-label={calibrating
             ? 'Calibration image. Click two points. Arrow keys move the cursor, Enter places a point. Tab to endpoints and use arrows to refine. Shift moves ten pixels. Escape clears.'
-            : 'Measurement image. Click to anchor Point 1; move the cursor to measure. Each click starts a new measurement. Arrow keys move the cursor, Enter anchors Point 1. Tab to the anchor and use arrows to refine. Hold Shift to hide the cursor, guides and on-image labels; Shift with arrows moves ten pixels. Escape clears.'}
+            : 'Measurement image. Click to anchor Point 1; move the cursor to measure. Each click starts a new measurement. Arrow keys move the cursor, Enter anchors Point 1. Tab to the anchor and use arrows to refine. Hold Shift to hide the cursor and on-image labels, keeping connecting lines visible; Shift with arrows moves ten pixels. Line colors: W white, R red, Y yellow, B blue, K black. Escape clears.'}
           onpointerdown={begin} onpointermove={move} onpointerup={finish}
           onpointerleave={() => cursor = null}
           onpointercancel={() => { drag = null; cursor = null; }} onlostpointercapture={() => drag = null}
@@ -274,8 +287,8 @@
               <rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} fill="white" />
               {#each guidePoints as p}<circle cx={p.x} cy={p.y} r={6 / scale} fill="black" />{/each}
             </mask></defs>
-            <g mask="url(#{guideMask})" pointer-events="none" style:visibility={hideOverlays ? 'hidden' : undefined}>
-              <path d="M {guidePoints[0].x} {guidePoints[0].y} H {guidePoints[1].x} V {guidePoints[1].y}" fill="none" stroke="#3050d0" stroke-width="1.25" stroke-dasharray="4 4" vector-effect="non-scaling-stroke" />
+            <g mask="url(#{guideMask})" pointer-events="none">
+              <path d="M {guidePoints[0].x} {guidePoints[0].y} H {guidePoints[1].x} V {guidePoints[1].y}" fill="none" stroke={calibrating ? '#3050d0' : lineColor} stroke-width="1.25" stroke-dasharray="4 4" vector-effect="non-scaling-stroke" />
             </g>
             {#if result}
               <g pointer-events="none" aria-hidden="true" style:visibility={hideOverlays ? 'hidden' : undefined}>
@@ -366,7 +379,8 @@
               </div>
             {/each}
           </div>
-          <p class="muted small">Hold Shift to hide the cursor, guides and on-image labels. Percentages are of the calibrated span. Zoom never changes distances; measurements aren't saved.</p>
+          <p class="muted small">Hold Shift to hide the cursor and on-image labels; connecting lines stay visible. Line colors: W white · R red · Y yellow · B blue · K black.</p>
+          <p class="muted small">Percentages are of the calibrated span. Zoom never changes distances; measurements aren't saved.</p>
         </section>
       {/if}
       {#if error}<p role="alert" class="error">{error}</p>{/if}

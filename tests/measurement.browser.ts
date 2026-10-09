@@ -74,16 +74,17 @@ export async function testMeasurement(): Promise<string> {
     check(target.querySelectorAll('[data-endpoint]').length === 1, 'Only Point 1 is anchored, never the moving cursor');
     check(target.querySelectorAll('path[stroke-dasharray]').length === 1, 'The guide is one dashed stroke, without a second halo stroke');
     const endpoint = target.querySelector('[data-endpoint="0"]')!;
-    const overlays = [...target.querySelectorAll('path[stroke-dasharray], .placement-cursor, .leg-tag')];
-    check(overlays.length === 4, 'The visibility check includes the cursor, guide and both distance labels');
-    const positions = () => JSON.stringify(overlays.map((element) => [element.getAttribute('d'), element.getAttribute('transform'), element.textContent]));
+    const guide = target.querySelector('path[stroke-dasharray]')!;
+    const overlays = [...target.querySelectorAll('.placement-cursor, .leg-tag')];
+    check(overlays.length === 3, 'The visibility check includes the cursor and both distance labels');
+    const positions = () => JSON.stringify([guide, ...overlays].map((element) => [element.getAttribute('d'), element.getAttribute('transform'), element.textContent]));
     const beforeHide = positions();
     const beforeResults = target.querySelector('.results')!.textContent;
     check(!!target.querySelector('.magnifier'), 'Magnifier is present before hiding');
     key(endpoint, 'Shift', true);
     await tick();
     check(overlays.every((element) => getComputedStyle(element).visibility === 'hidden')
-      && !target.querySelector('.magnifier'), 'Shift hides cursor, both guide legs, on-image labels and magnifier even when the anchor has keyboard focus');
+      && !target.querySelector('.magnifier') && getComputedStyle(guide).visibility === 'visible', 'Shift hides cursor, on-image labels and magnifier but keeps both connecting legs visible even when the anchor has keyboard focus');
     check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible'
       && positions() === beforeHide && target.querySelector('.results')!.textContent === beforeResults, 'Hiding keeps the fixed anchor, coordinates and sidebar distances unchanged');
     target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', shiftKey: true, bubbles: true }));
@@ -93,13 +94,31 @@ export async function testMeasurement(): Promise<string> {
     await tick();
     check(overlays.every((element) => getComputedStyle(element).visibility === 'visible')
       && positions() === beforeHide && !!target.querySelector('.magnifier'), 'Releasing Shift outside the image restores all overlays in exactly the same positions');
+    for (const [name, stroke] of [['w', 'rgb(255, 255, 255)'], ['r', 'rgb(255, 0, 0)'], ['y', 'rgb(255, 255, 0)'], ['k', 'rgb(0, 0, 0)'], ['b', 'rgb(48, 80, 208)']]) {
+      key(endpoint, name);
+      await tick();
+      check(getComputedStyle(guide).stroke === stroke && positions() === beforeHide
+        && target.querySelector('.results')!.textContent === beforeResults, `${name} changes only the connecting line color, not the measurement`);
+    }
+    for (const modifier of ['ctrlKey', 'metaKey', 'altKey']) {
+      endpoint.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', [modifier]: true, bubbles: true }));
+      await tick();
+      check(getComputedStyle(guide).stroke === 'rgb(48, 80, 208)', `${modifier} shortcuts do not change line color`);
+    }
+    key(target.querySelector('select')!, 'r');
+    await tick();
+    check(getComputedStyle(guide).stroke === 'rgb(48, 80, 208)', 'Typing in a select does not trigger a line color shortcut');
     key(surface, 'Shift', true);
+    key(endpoint, 'R', true);
+    await tick();
+    check(getComputedStyle(guide).stroke === 'rgb(255, 0, 0)' && getComputedStyle(guide).visibility === 'visible', 'Uppercase color shortcuts work while Shift is held');
     await hover(450, 300);
     key(surface, 'ArrowRight', true);
     await tick();
     check(target.querySelectorAll('.results strong')[0].textContent === '70%'
       && target.querySelectorAll('.results strong')[1].textContent === '55%'
-      && overlays.every((element) => getComputedStyle(element).visibility === 'hidden'), 'Hidden measurement stays live and Shift-arrow still moves the cursor ten pixels');
+      && overlays.every((element) => getComputedStyle(element).visibility === 'hidden')
+      && getComputedStyle(guide).visibility === 'visible', 'Measurement stays live with connecting lines visible and Shift-arrow still moves the cursor ten pixels');
     window.dispatchEvent(new Event('blur'));
     await tick();
     check(overlays.every((element) => getComputedStyle(element).visibility === 'visible'), 'Window blur prevents a lost Shift release from leaving overlays hidden');
@@ -211,8 +230,10 @@ export async function testMeasurement(): Promise<string> {
     check(ring(target.querySelector('[data-endpoint="0"] .marker')!) === 'rgb(255, 255, 255)', 'Reference calibration uses the same white crosshairs');
     check(getComputedStyle(target.querySelector('[data-endpoint="0"] .hit-target')!).cursor === 'grab', 'Reference calibration drag area also uses the grab cursor');
     key(surface, 'Shift', true);
+    key(surface, 'r');
     await tick();
-    check(getComputedStyle(target.querySelector('path[stroke-dasharray]')!).visibility === 'visible', 'Shift does not hide the two-point calibration guide');
+    check(getComputedStyle(target.querySelector('path[stroke-dasharray]')!).visibility === 'visible'
+      && getComputedStyle(target.querySelector('path[stroke-dasharray]')!).stroke === 'rgb(48, 80, 208)', 'Shift and color shortcuts leave the two-point calibration guide unchanged');
     surface.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', bubbles: true }));
     await tick();
     const calibrationEndpoint = target.querySelector('[data-endpoint="1"]')!;
@@ -258,7 +279,7 @@ export async function testMeasurement(): Promise<string> {
     await place(200, 200);
     await hover(400, 300);
     check(target.querySelectorAll('.results strong')[0].textContent === '50%' && target.querySelectorAll('.results strong')[1].textContent === '—', 'An uncalibrated axis is unavailable');
-    return 'PASS: Shift hold/release visibility with exact position restoration, dual-Shift handling and blur recovery, live hidden measurements, click/keyboard reanchoring, fixed Point 1, single dashed guide, adaptive crosshairs, part coordinates, zoom invariance, clearing, unchanged two-point calibration, single-axis recalibration, and invalid-size rejection';
+    return 'PASS: Shift keeps connecting lines visible while hiding labels/cursor, all five line color shortcuts including Shift-held uppercase, modifier/select exclusion, exact position restoration, dual-Shift handling and blur recovery, live measurements, click/keyboard reanchoring, adaptive crosshairs, part coordinates, zoom invariance, clearing, unchanged calibration, single-axis recalibration, and invalid-size rejection';
   } finally {
     if (component) await unmount(component);
     target.remove();
