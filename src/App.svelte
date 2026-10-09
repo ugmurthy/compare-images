@@ -692,7 +692,13 @@
   }
 </script>
 
-<svelte:window onpointerdown={windowPointerDown} />
+<svelte:window onpointerdown={windowPointerDown} onkeydowncapture={(event) => {
+  if (view !== 'measure' || event.key.toLowerCase() !== 'm' || event.repeat || event.isComposing
+    || event.ctrlKey || event.metaKey || event.altKey
+    || (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]'))) return;
+  event.preventDefault();
+  magnifierPreference.enabled = !magnifierPreference.enabled;
+}} />
 
 <header class="app-bar">
   <div class="brand">
@@ -714,7 +720,7 @@
   <div class="app-status">
     <StorageStatus entries={historyEntries} />
     <button class="btn icon quiet magnifier-toggle" role="switch" aria-label="Magnifier" aria-checked={magnifierPreference.enabled}
-      title={`Magnifier ${magnifierPreference.enabled ? 'on' : 'off'} — toggle for all marking tools`}
+      title={`Magnifier ${magnifierPreference.enabled ? 'on' : 'off'} — toggle for all marking tools${view === 'measure' ? ' · M' : ''}`}
       onclick={() => magnifierPreference.enabled = !magnifierPreference.enabled}>
       <Icon name="magnifier" /><span class="switch-track" aria-hidden="true"></span>
     </button>

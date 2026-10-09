@@ -1,5 +1,6 @@
 import { mount, tick, unmount } from 'svelte';
 import { fromStore, writable } from 'svelte/store';
+import App from '../src/App.svelte';
 import AnchorEditor from '../src/components/AnchorEditor.svelte';
 import MeasureView from '../src/components/MeasureView.svelte';
 import RegionSelector from '../src/components/RegionSelector.svelte';
@@ -33,6 +34,7 @@ export async function testMagnifier(): Promise<string> {
   const preference = fromStore(enabled);
   const magnifierContext = new Map([[magnifierPreferenceContext, { get enabled() { return preference.current; } }]]);
   let component: ReturnType<typeof mount> | undefined;
+  const savedPreference = localStorage.getItem('compare-sketch-magnifier');
   const settle = async () => { await tick(); await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); };
   async function replace(create: () => ReturnType<typeof mount>) {
     if (component) await unmount(component);
@@ -162,10 +164,68 @@ export async function testMagnifier(): Promise<string> {
     await checkSwitch(surface, { x: 151, y: 113 }, surface.getScreenCTM()!.a);
     await pointer(surface, 'pointerup', { x: 151, y: 113 });
     hidden();
-    return 'PASS: shared on/off preference updates all marking tasks live; exact 3× image crops, touch placement/drag/release/cancellation across anchors, regions, calibration and measurement; grab offsets; edge positioning; cropped and zoomed images; keyboard refinement; inert accessible overlay';
+
+    localStorage.setItem('compare-sketch-magnifier', 'on');
+    await replace(() => mount(App, { target }));
+    const toggle = target.querySelector<HTMLButtonElement>('[aria-label="Magnifier"]')!;
+    const key = async (element: Element, options: KeyboardEventInit = {}) => {
+      element.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true, ...options }));
+      await settle();
+    };
+    await key(toggle);
+    check(toggle.getAttribute('aria-checked') === 'true', 'M does not toggle the magnifier outside measurement mode');
+    const upload = target.querySelector<HTMLInputElement>('[aria-label="Reference upload"] input')!;
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    upload.files = transfer.files;
+    upload.dispatchEvent(new Event('change', { bubbles: true }));
+    for (let i = 0; i < 100 && target.querySelector('#nav-measure')!.getAttribute('aria-disabled') === 'true'; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    target.querySelector<HTMLButtonElement>('#nav-measure')!.click();
+    for (let i = 0; i < 100 && !target.querySelector('.results'); i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    check(!!target.querySelector('.results'), 'Uploaded reference opens in measurement mode');
+    surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
+    await pointer(surface, 'pointermove', { x: 301, y: 239 }, 'mouse');
+    lensAt({ x: 301, y: 239 }, surface.getScreenCTM()!.a);
+    await key(surface);
+    hidden();
+    check(toggle.getAttribute('aria-checked') === 'false', 'M turns off the magnifier and updates the toolbar switch');
+    await key(surface, { repeat: true });
+    hidden();
+    check(toggle.getAttribute('aria-checked') === 'false', 'Holding M does not repeatedly toggle the preference');
+    await key(surface, { key: 'M' });
+    lensAt({ x: 301, y: 239 }, surface.getScreenCTM()!.a);
+    for (const options of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }]) {
+      await key(surface, options);
+      check(toggle.getAttribute('aria-checked') === 'true', 'Modified shortcuts and composition do not toggle the magnifier');
+    }
+    await key(target.querySelector('select')!);
+    check(toggle.getAttribute('aria-checked') === 'true', 'M in a select is not intercepted');
+    await key(surface, { key: 'Shift', shiftKey: true });
+    hidden();
+    await key(surface, { key: 'M', shiftKey: true });
+    surface.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', bubbles: true }));
+    await settle();
+    hidden();
+    check(toggle.getAttribute('aria-checked') === 'false', 'Releasing Shift does not override an M toggle made while Shift was held');
+    toggle.click();
+    await settle();
+    lensAt({ x: 301, y: 239 }, surface.getScreenCTM()!.a);
+    target.querySelector<HTMLButtonElement>('[aria-label="Redo calibration"]')!.click();
+    await settle();
+    await pointer(surface, 'pointermove', { x: 151, y: 113 }, 'mouse');
+    await key(target.querySelector('input:not([type="number"])')!);
+    check(toggle.getAttribute('aria-checked') === 'true', 'Typing M in the calibration unit does not toggle the magnifier');
+    await key(surface);
+    hidden();
+    check(toggle.getAttribute('aria-checked') === 'false', 'M also toggles the magnifier during calibration');
+    await replace(() => mount(App, { target }));
+    check(target.querySelector('[aria-label="Magnifier"]')!.getAttribute('aria-checked') === 'false', 'The keyboard toggle preserves the saved app-wide preference when reopening');
+    return 'PASS: measurement M toggle on/off, toolbar synchronization, saved preference, Shift interaction, key-repeat/modifier/input exclusions and calibration; shared preference across marking tasks; exact 3× crops, touch placement/drag/release/cancellation, edge positioning, cropped/zoomed images, keyboard refinement and inert accessible overlay';
   } finally {
     if (component) await unmount(component);
     target.remove();
     URL.revokeObjectURL(url);
+    if (savedPreference === null) localStorage.removeItem('compare-sketch-magnifier');
+    else localStorage.setItem('compare-sketch-magnifier', savedPreference);
   }
 }

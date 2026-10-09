@@ -265,8 +265,8 @@
         <svg bind:this={surface} viewBox="{bounds.x} {bounds.y} {bounds.width} {bounds.height}"
           style:width="{zoom * 100}%" style:height="calc(var(--image-height) * {zoom})" style:cursor={panning && zoom > 1 ? 'grab' : 'none'} role="application" tabindex="0"
           aria-label={calibrating
-            ? 'Calibration image. Click two points. Arrow keys move the cursor, Enter places a point. Tab to endpoints and use arrows to refine. Shift moves ten pixels. Escape clears.'
-            : 'Measurement image. Click to anchor Point 1; move the cursor to measure. Each click starts a new measurement. Arrow keys move the cursor, Enter anchors Point 1. Tab to the anchor and use arrows to refine. Hold Shift to hide the cursor and on-image labels, keeping connecting lines visible; Shift with arrows moves ten pixels. Line colors: W white, R red, Y yellow, B blue, K black. Escape clears.'}
+            ? 'Calibration image. Click two points. Arrow keys move the cursor, Enter places a point. Tab to endpoints and use arrows to refine. Shift moves ten pixels. M toggles the magnifier. Escape clears.'
+            : 'Measurement image. Click to anchor Point 1; move the cursor to measure. Each click starts a new measurement. Arrow keys move the cursor, Enter anchors Point 1. Tab to the anchor and use arrows to refine. Hold Shift to hide the cursor and on-image labels, keeping connecting lines visible; Shift with arrows moves ten pixels. M toggles the magnifier. Line colors: W white, R red, Y yellow, B blue, K black. Escape clears.'}
           onpointerdown={begin} onpointermove={move} onpointerup={finish}
           onpointerleave={() => cursor = null}
           onpointercancel={() => { drag = null; cursor = null; }} onlostpointercapture={() => drag = null}
@@ -326,6 +326,7 @@
             <li class:current={points.length === 2}>Optionally enter its real size, then save</li>
           </ol>
           <p class="muted small">A larger span gives more precise results.</p>
+          <p class="muted small">Press M to toggle the magnifier on or off.</p>
           <label>Reference axes <select bind:value={axes}><option value="both">Horizontal and vertical</option><option value="horizontal">Horizontal only</option><option value="vertical">Vertical only</option></select></label>
           <fieldset><legend>Size on paper <span class="muted">(optional)</span></legend>
             <p class="muted small">The size of the whole selected span, not one cell. Leave blank for percentages only.</p>
@@ -379,7 +380,7 @@
               </div>
             {/each}
           </div>
-          <p class="muted small">Hold Shift to hide the cursor and on-image labels; connecting lines stay visible. Line colors: W white · R red · Y yellow · B blue · K black.</p>
+          <p class="muted small">Press M to toggle the magnifier on or off. Hold Shift to hide the cursor and on-image labels; connecting lines stay visible. Line colors: W white · R red · Y yellow · B blue · K black.</p>
           <p class="muted small">Percentages are of the calibrated span. Zoom never changes distances; measurements aren't saved.</p>
         </section>
       {/if}
