@@ -285,7 +285,9 @@
           {#if guidePoints}
             <defs><mask id={guideMask} maskUnits="userSpaceOnUse" x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height}>
               <rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} fill="white" />
-              {#each guidePoints as p}<circle cx={p.x} cy={p.y} r={6 / scale} fill="black" />{/each}
+              {#each guidePoints as p, index}
+                {#if index === 0 || !hideOverlays}<circle cx={p.x} cy={p.y} r={6 / scale} fill="black" />{/if}
+              {/each}
             </mask></defs>
             <g mask="url(#{guideMask})" pointer-events="none">
               <path d="M {guidePoints[0].x} {guidePoints[0].y} H {guidePoints[1].x} V {guidePoints[1].y}" fill="none" stroke={calibrating ? '#3050d0' : lineColor} stroke-width="1.25" stroke-dasharray="4 4" vector-effect="non-scaling-stroke" />

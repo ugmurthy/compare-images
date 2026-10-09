@@ -80,9 +80,33 @@ export async function testMeasurement(): Promise<string> {
     const positions = () => JSON.stringify([guide, ...overlays].map((element) => [element.getAttribute('d'), element.getAttribute('transform'), element.textContent]));
     const beforeHide = positions();
     const beforeResults = target.querySelector('.results')!.textContent;
+    async function inkNearCursor() {
+      // Rasterize the displayed guide alone; check the final five screen pixels,
+      // allowing for its four-pixel dash gaps but not a six-pixel cursor cutout.
+      const copy = surface.cloneNode(true) as SVGSVGElement;
+      copy.querySelectorAll('image, [data-endpoint], .placement-cursor, .leg-tag').forEach((element) => element.remove());
+      const rect = surface.getBoundingClientRect();
+      copy.setAttribute('width', String(rect.width));
+      copy.setAttribute('height', String(rect.height));
+      copy.removeAttribute('style');
+      const raster = new Image();
+      raster.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(copy))}`;
+      await raster.decode();
+      const pixels = document.createElement('canvas');
+      pixels.width = Math.ceil(rect.width * 2);
+      pixels.height = Math.ceil(rect.height * 2);
+      const ctx = pixels.getContext('2d')!;
+      ctx.drawImage(raster, 0, 0, rect.width * 2, rect.height * 2);
+      const end = new DOMPoint(420, 260).matrixTransform(surface.getScreenCTM()!);
+      const data = ctx.getImageData(Math.round((end.x - rect.left) * 2) - 1,
+        Math.round((end.y - rect.top) * 2) - 10, 2, 10).data;
+      return data.some((value, index) => index % 4 === 3 && value > 0);
+    }
+    check(!await inkNearCursor(), 'The visible cursor keeps its open centre free of guide ink');
     check(!!target.querySelector('.magnifier'), 'Magnifier is present before hiding');
     key(endpoint, 'Shift', true);
     await tick();
+    check(await inkNearCursor(), 'Shift extends the rendered guide into the hidden cursor centre instead of leaving a six-pixel cutout');
     check(overlays.every((element) => getComputedStyle(element).visibility === 'hidden')
       && !target.querySelector('.magnifier') && getComputedStyle(guide).visibility === 'visible', 'Shift hides cursor, on-image labels and magnifier but keeps both connecting legs visible even when the anchor has keyboard focus');
     check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible'
@@ -94,6 +118,7 @@ export async function testMeasurement(): Promise<string> {
     await tick();
     check(overlays.every((element) => getComputedStyle(element).visibility === 'visible')
       && positions() === beforeHide && !!target.querySelector('.magnifier'), 'Releasing Shift outside the image restores all overlays in exactly the same positions');
+    check(!await inkNearCursor(), 'Releasing Shift restores the open-centre guide clearance');
     for (const [name, stroke] of [['w', 'rgb(255, 255, 255)'], ['r', 'rgb(255, 0, 0)'], ['y', 'rgb(255, 255, 0)'], ['k', 'rgb(0, 0, 0)'], ['b', 'rgb(48, 80, 208)']]) {
       key(endpoint, name);
       await tick();
