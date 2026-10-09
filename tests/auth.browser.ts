@@ -14,11 +14,13 @@ let signOutFails = false;
 let updateFails = false;
 let emptyExchange = false;
 let challenge = '';
+let googleCode = 0;
+const profilePhoto = 'http://127.0.0.1:54325/profile-avatar.svg';
 const usedCodes = new Set<string>();
 const user = {
   id: '00000000-0000-4000-8000-000000000001', aud: 'authenticated', role: 'authenticated',
   email: 'artist@example.test', email_confirmed_at: new Date().toISOString(),
-  created_at: new Date().toISOString(), app_metadata: { provider: 'email' }, user_metadata: {}
+  created_at: new Date().toISOString(), app_metadata: { provider: 'email' }, user_metadata: {} as Record<string, unknown>
 };
 function tokenResponse() {
   const exp = Math.floor(Date.now() / 1000) + 3600;
@@ -36,6 +38,11 @@ const mock = Bun.serve({
       'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-supabase-api-version',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS' };
     if (request.method === 'OPTIONS') return new Response(null, { headers });
+    if (url.pathname === '/profile-avatar.svg') {
+      return new Response('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="#c6ded5"/><ellipse cx="40" cy="78" rx="30" ry="27" fill="#35665b"/><ellipse cx="40" cy="34" rx="19" ry="23" fill="#bd815b"/><path d="M21 33V25a19 19 0 0 1 38 0v9L49 20l-28 13" fill="#43332b"/></svg>', {
+        headers: { ...headers, 'Content-Type': 'image/svg+xml' }
+      });
+    }
     const payload = await request.text();
     const body = payload ? JSON.parse(payload) : {};
     records.push({ path: url.pathname, query: url.searchParams, body });
@@ -49,7 +56,7 @@ const mock = Bun.serve({
       challenge = url.searchParams.get('code_challenge') ?? '';
       // Simulate provider consent without contacting Google or a real Supabase.
       const redirect = new URL(url.searchParams.get('redirect_to')!);
-      redirect.searchParams.set('code', 'google-code');
+      redirect.searchParams.set('code', `google-code-${++googleCode}`);
       return new Response(null, { status: 302, headers: { ...headers, Location: redirect.href } });
     }
     if (url.pathname === '/auth/v1/token') {
@@ -58,7 +65,7 @@ const mock = Bun.serve({
       }
       if (url.searchParams.get('grant_type') === 'pkce') {
         const hashed = new Bun.CryptoHasher('sha256').update(body.code_verifier ?? '').digest('base64url');
-        if (!challenge || hashed !== challenge || !['confirmation-code', 'recovery-code', 'google-code', 'empty-code'].includes(body.auth_code) || usedCodes.has(body.auth_code)) return failure();
+        if (!challenge || hashed !== challenge || !['confirmation-code', 'recovery-code', 'empty-code', `google-code-${googleCode}`].includes(body.auth_code) || usedCodes.has(body.auth_code)) return failure();
         usedCodes.add(body.auth_code);
         if (emptyExchange) return json({ user });
         return json(tokenResponse());
@@ -153,6 +160,7 @@ try {
   await browser('reload');
   await waitForApp();
   await capture('workspace');
+  await expectDOM('!document.querySelector(".account-avatar img") && document.querySelector(".account-avatar").textContent.trim() === "A"', 'Missing profile photo falls back to email initial');
   await expectDOM('document.querySelector(".account-avatar").closest(".account").previousElementSibling.matches(".runtime-pill") && !document.querySelector(".account-bar")', 'Avatar follows OpenCV status, separate account bar removed');
   await click('Account menu');
   await expectDOM('document.querySelector(".account-avatar").getAttribute("aria-expanded") === "true" && document.activeElement.getAttribute("role") === "menuitem" && document.querySelector(".account-menu").textContent.includes("artist@example.test")', 'Menu exposes identity and focuses sign-out');
@@ -238,10 +246,37 @@ try {
   await waitForApp();
   await signOut();
   await waitText('Welcome back');
+  user.app_metadata.provider = 'google';
+  user.user_metadata = { avatar_url: profilePhoto, picture: 'http://127.0.0.1:54325/missing-photo' };
   await click('Continue with Google');
   await waitForApp();
   check(last('authorize').query.get('provider') === 'google' && last('authorize').query.get('redirect_to') === `${origin}/auth/callback`, 'Google provider and redirect exact');
   check(last('authorize').query.get('code_challenge_method') === 's256', 'Google uses PKCE');
+  await browser('wait', '--fn', 'document.querySelector(".account-avatar img")?.naturalWidth > 0');
+  await expectDOM(`document.querySelector(".account-avatar img").src === ${JSON.stringify(profilePhoto)}`, 'Google avatar_url takes precedence over picture');
+  await capture('google-avatar');
+  await browser('reload');
+  await waitForApp();
+  await browser('wait', '--fn', 'document.querySelector(".account-avatar img")?.naturalWidth > 0');
+  await click('Account menu');
+  await expectDOM('document.activeElement.getAttribute("role") === "menuitem" && document.querySelector(".account-menu").textContent.includes("artist@example.test")', 'Restored Google photo preserves accessible account menu');
+  await capture('google-account-menu');
+  await browser('press', 'Escape');
+  await expectDOM('document.activeElement.matches(".account-avatar")', 'Google avatar retains keyboard focus on menu dismissal');
+  await signOut();
+  await waitText('Welcome back');
+  user.user_metadata = { avatar_url: ' ', picture: profilePhoto };
+  await click('Continue with Google');
+  await waitForApp();
+  await browser('wait', '--fn', 'document.querySelector(".account-avatar img")?.naturalWidth > 0');
+  await expectDOM(`document.querySelector(".account-avatar img").src === ${JSON.stringify(profilePhoto)}`, 'Google picture is used when avatar_url is empty');
+  await signOut();
+  await waitText('Welcome back');
+  user.user_metadata = { avatar_url: 'http://127.0.0.1:54325/missing-photo' };
+  await click('Continue with Google');
+  await waitForApp();
+  await browser('wait', '--fn', '!document.querySelector(".account-avatar img") && document.querySelector(".account-avatar").textContent.trim() === "A"');
+  await capture('google-avatar-fallback');
   await signOut();
   await waitText('Welcome back');
   for (const path of ['/auth/callback', '/auth/reset-password', '/auth/callback?error=access_denied&error_description=Private-provider-detail', '/auth/reset-password?code=expired-code']) {
@@ -258,7 +293,7 @@ try {
   await browser('open', `${origin}/auth/callback?code=empty-code`);
   await waitText('We couldn’t use this link');
   await expectDOM('!document.querySelector(".app-bar")', 'Successful HTTP response without session must not unlock the app');
-  console.log('PASS: auth gate; accessible forms; general errors; registration + PKCE confirmation; email login; persistence; account avatar placement/menu/keyboard/dismissal; light + dark layouts; sign-out success/failure; reset request/recovery/update/failure; Google PKCE; invalid/missing/denied/no-session callbacks; safe redirects; desktop + narrow overflow checks.');
+  console.log('PASS: auth gate; accessible forms; general errors; registration + PKCE confirmation; email login; persistence; account avatar placement/menu/keyboard/dismissal; light + dark layouts; sign-out success/failure; reset request/recovery/update/failure; Google PKCE + profile avatar/picture/persistence/error fallback; invalid/missing/denied/no-session callbacks; safe redirects; desktop + narrow overflow checks.');
 } finally {
   await browser('close');
   await mock.stop(true);
