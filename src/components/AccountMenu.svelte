@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import type { User } from '@supabase/supabase-js';
 
-  let { user, busy, onSignOut }: { user: User; busy: boolean; onSignOut: () => Promise<void> } = $props();
+  let { user, busy, onSignOut, onSubscription }: { user: User; busy: boolean; onSignOut: () => Promise<void>; onSubscription: () => void } = $props();
   const id = $props.id();
   let open = $state(false);
   let container: HTMLDivElement;
@@ -38,7 +38,11 @@
       closeMenu();
     } else if ((open || event.target === trigger) && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
       event.preventDefault();
-      if (open) signOutItem?.focus();
+      if (open) {
+        const items = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
+        const current = items.indexOf(document.activeElement as HTMLButtonElement);
+        items[(current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+      }
       else void openMenu();
     }
   }
@@ -62,6 +66,9 @@
         <span>Signed in as</span>
         <strong>{user.email ?? 'your account'}</strong>
       </div>
+      <button class="btn quiet" type="button" role="menuitem" disabled={busy} onclick={() => { closeMenu(); onSubscription(); }}>
+        Subscription & referrals
+      </button>
       <button class="btn quiet" bind:this={signOutItem} type="button" role="menuitem" disabled={busy} onclick={() => void onSignOut()}>
         {busy ? 'Signing out…' : 'Sign out'}
       </button>

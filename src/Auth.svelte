@@ -1,15 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Session } from '@supabase/supabase-js';
-  import App from './App.svelte';
+  import MemberArea from './MemberArea.svelte';
   import Icon from './components/Icon.svelte';
-  import AccountMenu from './components/AccountMenu.svelte';
+  import SubscriptionPage from './components/SubscriptionPage.svelte';
+  import { signupIntent, rememberSignup, type PlanId } from './lib/subscriptions';
   import { authConfigurationError, supabase } from './lib/supabase';
 
   type Mode = 'login' | 'register' | 'forgot' | 'reset';
   const callbackUrl = new URL(window.location.href);
+  const intent = signupIntent();
+  let selectedPlan = $state<PlanId>(intent.plan);
+  const referral = intent.referral;
+  if (referral) rememberSignup(intent.plan, referral);
   let page = $state(callbackUrl.pathname);
-  let mode = $state<Mode>(callbackUrl.pathname === '/auth/reset-password' ? 'reset' : 'login');
+  let mode = $state<Mode>(callbackUrl.pathname === '/auth/reset-password' ? 'reset' : referral ? 'register' : 'login');
   let session = $state<Session | null>(null);
   let ready = $state(false);
   let busy = $state(false);
@@ -110,9 +115,11 @@
         if (authError) throw authError;
         password = '';
       } else if (mode === 'register') {
+        rememberSignup(selectedPlan, referral);
         const { error: authError } = await supabase.auth.signUp({
           email: email.trim(), password,
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback` }
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback`,
+            data: { sketch_plan: selectedPlan, sketch_referral: referral } }
         });
         if (authError) throw authError;
         password = '';
@@ -150,6 +157,7 @@
     error = '';
     notice = '';
     try {
+      rememberSignup(selectedPlan, referral);
       const { error: authError } = await supabase.auth.signInWithOAuth({
         provider: 'google', options: { redirectTo: `${window.location.origin}/auth/callback` }
       });
@@ -182,7 +190,11 @@
   }
 </script>
 
-{#if authConfigurationError || !ready || callbackFailed || !session || mode === 'reset'}
+<svelte:window onpopstate={() => page = window.location.pathname} />
+
+{#if ready && !session && page === '/pricing' && !authConfigurationError}
+  <SubscriptionPage onBack={() => chooseMode('login')} onChoose={(plan) => { selectedPlan = plan; chooseMode('register'); }} />
+{:else if authConfigurationError || !ready || callbackFailed || !session || mode === 'reset'}
   <main class="auth-page">
     <section class="auth-card" aria-labelledby="auth-title">
       <div class="auth-brand"><Icon name="logo" size={24} /><span>Compare Sketch</span></div>
@@ -200,6 +212,16 @@
       {:else}
         <h1 id="auth-title">{title}</h1>
         <p>{mode === 'register' ? 'One account for the apps using our shared identity service.' : mode === 'forgot' ? 'We’ll email you a link to choose a new password.' : mode === 'reset' ? 'Use a strong, unique password for your account.' : 'Sign in to align, compare, and measure your sketches.'}</p>
+        {#if mode === 'register'}
+          <label for="signup-plan">Subscription type</label>
+          <select id="signup-plan" bind:value={selectedPlan} disabled={busy}>
+            <option value="free">Free — all features for 3 months</option>
+            <option value="yearly">Yearly — all features for 1 year</option>
+            <option value="lifetime">Lifetime — all features forever</option>
+          </select>
+          <small>Every new account starts with 3 months free. Paid access begins only after payment; yearly purchases add a year to remaining access.</small>
+          {#if referral}<p class="auth-notice">You’re signing up through a referral link. Your friend earns 3 months if a reward slot is available.</p>{/if}
+        {/if}
         {#if mode === 'login' || mode === 'register'}
           <button class="btn google" onclick={googleLogin} disabled={busy}>Continue with Google</button>
           <div class="auth-divider">or with email</div>
@@ -237,6 +259,7 @@
           {:else}
             <button class="btn quiet" disabled={busy} onclick={() => chooseMode('login')}>{session ? 'Back to app' : 'Back to sign in'}</button>
           {/if}
+          {#if mode === 'login' || mode === 'register'}<button class="btn quiet" disabled={busy} onclick={() => replacePath('/pricing')}>Prices & subscriptions</button>{/if}
         </div>
         <p class="local-note">Sketches and history stay in this browser. Signing in does not sync or separate saved data by account.</p>
       {/if}
@@ -246,11 +269,7 @@
   {#if error}<p class="account-message auth-error" role="alert">{error}</p>{/if}
   {#if notice}<p class="account-message auth-notice" role="status">{notice}</p>{/if}
   {#key session.user.id}
-    <App>
-      {#snippet account()}
-        {#if session}<AccountMenu user={session.user} {busy} onSignOut={signOut} />{/if}
-      {/snippet}
-    </App>
+    <MemberArea user={session.user} {busy} onSignOut={signOut} />
   {/key}
 {/if}
 

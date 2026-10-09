@@ -1,0 +1,6 @@
+project_id = "compare-sketch"
+
+[functions.sketch-billing]
+# Public price listing and signed Razorpay webhooks share this endpoint.
+# All member operations explicitly verify the user token with Supabase Auth.
+verify_jwt = false

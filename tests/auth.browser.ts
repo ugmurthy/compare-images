@@ -15,6 +15,14 @@ let updateFails = false;
 let emptyExchange = false;
 let challenge = '';
 let googleCode = 0;
+let membershipFails = false;
+let pricesEnabled = true;
+let verificationFails = false;
+const member = {
+  user_id: '00000000-0000-4000-8000-000000000001', plan: 'free', selected_plan: 'free',
+  expires_at: new Date(Date.now() + 90 * 86400000).toISOString(), activated_at: new Date().toISOString(),
+  referral_code: '10000000-0000-4000-8000-000000000001', referrals_used: 0, referral_result: null
+};
 const profilePhoto = 'http://127.0.0.1:54325/profile-avatar.svg';
 const usedCodes = new Set<string>();
 const user = {
@@ -35,7 +43,7 @@ const mock = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     const headers = { 'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-supabase-api-version',
+      'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info, x-supabase-api-version, content-profile, accept-profile',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS' };
     if (request.method === 'OPTIONS') return new Response(null, { headers });
     if (url.pathname === '/profile-avatar.svg') {
@@ -48,6 +56,24 @@ const mock = Bun.serve({
     records.push({ path: url.pathname, query: url.searchParams, body });
     const json = (data: unknown, status = 200) => Response.json(data, { headers, status });
     const failure = () => json({ code: 'mock_failure', msg: 'Private provider detail must not appear in the UI' }, 400);
+    if (url.pathname === '/rest/v1/rpc/sketch_activate') {
+      return membershipFails ? failure() : json(member);
+    }
+    if (url.pathname === '/functions/v1/sketch-billing') {
+      if (body.action === 'prices') return json({ plans: [
+        { id: 'free', amount: null, currency: 'INR', enabled: true },
+        { id: 'yearly', amount: pricesEnabled ? 120000 : null, currency: 'INR', enabled: pricesEnabled },
+        { id: 'lifetime', amount: pricesEnabled ? 350000 : null, currency: 'INR', enabled: pricesEnabled }
+      ] });
+      if (body.action === 'create-order') return json({ order_id: `order_${body.plan}`, key: 'rzp_test_browser_only', amount: body.plan === 'yearly' ? 120000 : 350000, currency: 'INR' });
+      if (body.action === 'verify-payment') {
+        if (verificationFails) return failure();
+        member.plan = body.order_id === 'order_yearly' ? 'yearly' : 'lifetime';
+        member.selected_plan = member.plan;
+        member.expires_at = member.plan === 'lifetime' ? '' : '2030-12-15T12:00:00Z';
+        return json({ verified: true });
+      }
+    }
     if (url.pathname === '/auth/v1/signup' || url.pathname === '/auth/v1/recover') {
       challenge = body.code_challenge;
       return json(url.pathname.endsWith('signup') ? user : {});
@@ -149,6 +175,7 @@ try {
   await browser('fill', '#auth-confirmation', 'registration-password');
   await click('Create account');
   await waitText('Check your email');
+  check(last('signup').body.data.sketch_plan === 'free', 'Default signup requests the free plan, not paid access');
   check(last('signup').query.get('redirect_to') === `${origin}/auth/callback`, 'Signup callback uses exact current origin');
   check(last('signup').body.code_challenge_method === 's256' && !!challenge, 'Signup uses PKCE');
   await expectDOM('!document.querySelector(".app-bar") && document.querySelector("#auth-password").value === ""', 'Confirmation required; password cleared');
@@ -293,7 +320,121 @@ try {
   await browser('open', `${origin}/auth/callback?code=empty-code`);
   await waitText('We couldn’t use this link');
   await expectDOM('!document.querySelector(".app-bar")', 'Successful HTTP response without session must not unlock the app');
+  emptyExchange = false;
+
+  // Membership flows use real frontend requests, but mock Supabase and Checkout.
+  // Amounts here are fixtures, never the production price catalog.
+  await browser('open', `${origin}/pricing`);
+  await waitText('Choose Yearly');
+  await capture('public-prices');
+  await click('Choose Yearly');
+  await expectDOM('document.querySelector("#signup-plan").value === "yearly"', 'Pricing choice preselects signup plan');
+  await browser('select', '#signup-plan', 'lifetime');
+  await browser('fill', '#auth-email', 'new-artist@example.test');
+  await browser('fill', '#auth-password', 'new-artist-password');
+  await browser('fill', '#auth-confirmation', 'new-artist-password');
+  await click('Create account');
+  await waitText('Check your email');
+  check(last('signup').body.data.sketch_plan === 'lifetime', 'Chosen paid plan is signup intent');
+  check(member.plan === 'free', 'Selecting lifetime must not grant lifetime access');
+
+  const referrerCode = '10000000-0000-4000-8000-000000000002';
+  await browser('open', `${origin}/?ref=${referrerCode}`);
+  await waitText('You’re signing up through a referral link');
+  await capture('referral-registration');
+  await click('Prices & subscriptions');
+  await waitText('Choose Free');
+  await click('Choose Free');
+  await browser('fill', '#auth-email', 'referred-artist@example.test');
+  await browser('fill', '#auth-password', 'referred-artist-password');
+  await browser('fill', '#auth-confirmation', 'referred-artist-password');
+  await click('Create account');
+  await waitText('Check your email');
+  check(last('signup').body.data.sketch_referral === referrerCode, 'Referral survives navigation to pricing and signup');
+  await click('Back to sign in');
+  membershipFails = true;
+  await login();
+  await waitText('Subscription unavailable');
+  await expectDOM('!document.querySelector(".app-bar")', 'Missing billing backend fails closed, never unlocks the workspace');
+  await capture('membership-error');
+  membershipFails = false;
+  await click('Retry');
+  await waitForApp();
+  await browser('eval', `(async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 240;
+    const context = canvas.getContext('2d'); context.fillStyle = '#f5f1e9'; context.fillRect(0, 0, 320, 240);
+    context.strokeStyle = '#303030'; context.strokeRect(50, 40, 180, 140);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve));
+    const input = document.querySelector('[aria-label="Reference upload"] input');
+    const transfer = new DataTransfer(); transfer.items.add(new File([blob], 'retained-reference.png', { type: 'image/png' }));
+    input.files = transfer.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await browser('wait', 'img[alt="Reference preview"]');
+  const referenceUrl = JSON.parse(await browser('eval', `document.querySelector('img[alt="Reference preview"]').src`));
+  await click('Account menu');
+  await browser('press', 'ArrowUp');
+  await expectDOM('document.activeElement.textContent.trim() === "Subscription & referrals"', 'Arrow keys reach the new menu item');
+  await browser('press', 'Enter');
+  await waitText('0 of 2 referrals rewarded');
+  await expectDOM('document.querySelector("#referral-link").value.endsWith("?ref=" + "10000000-0000-4000-8000-000000000001") && !document.querySelector(".app-bar")', 'Personal referral link; workspace controls are suspended');
+  await capture('subscription-active');
+  await browser('select', 'select[aria-label="Color theme"]', 'dark');
+  await capture('subscription-dark');
+  await browser('select', 'select[aria-label="Color theme"]', 'light');
+
+  async function mockCheckout(result: 'cancel' | 'success') {
+    await browser('eval', `window.Razorpay = class { constructor(options) { this.options = options; } on() {} open() { ${result === 'cancel' ? 'this.options.modal.ondismiss();' : 'this.options.handler({ razorpay_payment_id: "pay_browser", razorpay_order_id: this.options.order_id, razorpay_signature: "test-signature" });'} } }; true`);
+  }
+  await mockCheckout('cancel');
+  await click('Get Yearly');
+  await waitText('Checkout closed.');
+  check(member.plan === 'free', 'Checkout cancellation preserves trial');
+  verificationFails = true;
+  await mockCheckout('success');
+  await click('Get Yearly');
+  await waitText('Payment could not be confirmed.');
+  check(member.plan === 'free', 'Unverified payment does not grant paid access');
+  await capture('payment-error');
+  verificationFails = false;
+  await click('Get Yearly');
+  await waitText('Payment verified.');
+  await waitText('Yearly access');
+  check(member.plan === 'yearly', 'Verified payment refreshes subscription');
+  await click('Back to app');
+  await waitForApp();
+  await expectDOM(`document.querySelector('img[alt="Reference preview"]').src === ${JSON.stringify(referenceUrl)} && document.body.textContent.includes('retained-reference.png')`, 'Subscription navigation preserves the selected reference and its object URL');
+  member.expires_at = '2020-01-01T00:00:00Z';
+  await browser('reload');
+  await waitText('Expired');
+  await expectDOM('!document.querySelector(".app-bar") && !!document.querySelector("#referral-link")', 'Expired access unmounts workspace but keeps renewal/referral access');
+  await capture('subscription-expired');
+  member.referrals_used = 2;
+  await click('Refresh access');
+  await waitText('2 of 2 referrals rewarded');
+  await expectDOM('!document.querySelector("#referral-link")', 'Exhausted referrals hide link creation');
+  await capture('referrals-exhausted');
+  pricesEnabled = false;
+  await browser('reload');
+  await waitText('Price coming soon');
+  await expectDOM('Array.from(document.querySelectorAll(".plans button")).every(b => b.disabled)', 'Unconfigured paid plans cannot open checkout');
+  await capture('prices-unconfigured');
+  pricesEnabled = true;
+  member.plan = 'lifetime';
+  member.selected_plan = 'lifetime';
+  member.expires_at = '';
+  await browser('open', `${origin}/pricing`);
+  await waitText('Yours for life.');
+  await expectDOM('document.querySelector(".membership").textContent.includes("Active") && Array.from(document.querySelectorAll(".plans button")).every(b => b.disabled)', 'Lifetime requires no expiry and cannot be repurchased');
+  await capture('subscription-lifetime');
+  await click('Sign out');
+  await waitText('Welcome back');
   console.log('PASS: auth gate; accessible forms; general errors; registration + PKCE confirmation; email login; persistence; account avatar placement/menu/keyboard/dismissal; light + dark layouts; sign-out success/failure; reset request/recovery/update/failure; Google PKCE + profile avatar/picture/persistence/error fallback; invalid/missing/denied/no-session callbacks; safe redirects; desktop + narrow overflow checks.');
+  console.log('PASS: public prices; paid signup selection without entitlement; referral signup/navigation; membership failure/retry; subscription menu keyboard access; comparison preservation; cancelled/unverified/verified checkout; expired and lifetime access; exhausted referrals; unconfigured prices; desktop + narrow subscription layouts. Payment and identity providers are mocks, not live gateway verification.');
+} catch (error) {
+  console.error(await browser('snapshot'));
+  console.error(await browser('errors'));
+  console.error(await browser('console'));
+  throw error;
 } finally {
   await browser('close');
   await mock.stop(true);

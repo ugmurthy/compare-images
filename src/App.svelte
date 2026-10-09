@@ -27,7 +27,7 @@
   import ImageDrop from './components/ImageDrop.svelte';
   import type { ComparisonMode } from './components/ModeSwitch.svelte';
 
-  let { account }: { account?: Snippet } = $props();
+  let { account, suspended = false }: { account?: Snippet; suspended?: boolean } = $props();
 
   const magnifierPreference = $state({ enabled: true });
   try {
@@ -135,6 +135,10 @@
 
   $effect(() => {
     if (cvState === 'idle') loadCv();
+  });
+
+  $effect(() => {
+    if (suspended) stopOverlayAnimation();
   });
 
   void listHistory().then((entries) => historyEntries = entries).catch((error) => errorMsg = `Could not load history: ${error.message}`);
@@ -692,14 +696,15 @@
   }
 </script>
 
-<svelte:window onpointerdown={windowPointerDown} onkeydowncapture={(event) => {
-  if (view !== 'measure' || event.key.toLowerCase() !== 'm' || event.repeat || event.isComposing
+<svelte:window onpointerdown={(event) => { if (!suspended) windowPointerDown(event); }} onkeydowncapture={(event) => {
+  if (suspended || view !== 'measure' || event.key.toLowerCase() !== 'm' || event.repeat || event.isComposing
     || event.ctrlKey || event.metaKey || event.altKey
     || (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]'))) return;
   event.preventDefault();
   magnifierPreference.enabled = !magnifierPreference.enabled;
 }} />
 
+{#if !suspended}
 <header class="app-bar">
   <div class="brand">
     <span class="brand-mark" aria-hidden="true"><Icon name="logo" size={20} /></span>
@@ -964,6 +969,7 @@
       </form>
     </div>
   </div>
+{/if}
 {/if}
 
 <style>

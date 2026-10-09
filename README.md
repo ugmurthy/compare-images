@@ -45,15 +45,16 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Authentication setup (shared Supabase identity)
 
-This is a **client-only Svelte 5/Vite SPA**, not SvelteKit or SSR. It uses
+The frontend is a **client-only Svelte 5/Vite SPA**, not SvelteKit or SSR. It uses
 `@supabase/supabase-js` with PKCE, browser-local session persistence, automatic
 token refresh, and one root auth subscription that is removed on teardown.
 `@supabase/ssr` and cookie-backed server clients are not appropriate here because
-there is no server rendering or trusted server endpoint. If SSR is added later,
+there is no server rendering. Billing uses separate trusted Supabase Edge
+Functions, not a server in this static host. If SSR is added later,
 use per-request cookie-backed clients and verify users/claims on the server.
 
 The comparison app is mounted only after session initialization and successful
-authentication. Email registration, email/password sign-in, Google sign-in,
+authentication with an active subscription. Email registration, email/password sign-in, Google sign-in,
 confirmation/OAuth callbacks, password recovery, and sign-out are provided.
 Sign-out unmounts the comparison workspace and releases its browser resources;
 saved IndexedDB history is retained. **History is browser-local, not account
@@ -62,7 +63,22 @@ the same saved data. This UI gate is not a security boundary for data already
 stored on the device. Any future remote data must use Supabase RLS and verified
 identity at trusted boundaries; browser `getSession()` is for UI state only.
 The two apps share user IDs through one Supabase project but have independent
-browser sessions on separate origins. Six-month entitlements are out of scope.
+browser sessions on separate origins.
+
+### Subscription and Razorpay setup
+
+Signup offers **Free (3 months)**, **Yearly (12 months)**, and **Lifetime** with
+all features. `/pricing` shows the plan catalog; **Account → Subscription &
+referrals** shows current expiry and a personal referral link. Each account can
+earn two three-month extensions from confirmed new-user signups. Paid selections
+do not grant paid access until Razorpay capture is verified on the server.
+
+Before deploying this frontend, configure the membership migration, Edge
+Function, prices, and Razorpay secrets/webhook using
+[Subscriptions, payments, and referrals](docs/subscriptions.md). Missing backend
+configuration blocks workspace access. Prices are intentionally unset until the
+owner supplies them; paid checkout remains disabled. The guide documents trial,
+renewal, referral, and existing-account rollout rules and repeatable checks.
 
 ### Required configuration (not supplied by this repository)
 
