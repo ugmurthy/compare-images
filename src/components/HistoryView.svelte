@@ -55,6 +55,23 @@
     finally { deletingId = null; }
   }
 
+  async function downloadImage(entry: HistoryEntry, aligned: boolean) {
+    if (busy) return;
+    downloading = true;
+    error = '';
+    downloadStatus = aligned ? `Preparing aligned image: ${entry.source.name}…` : '';
+    try {
+      // Paint the status before restoring the saved alignment.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      const { downloadSourceImage } = await import('../lib/alignedExport');
+      await downloadSourceImage(entry, aligned);
+      downloadStatus = `Download started: ${aligned ? 'aligned' : 'original'} source ${entry.source.name}.`;
+    } catch (cause) {
+      downloadStatus = '';
+      error = `Could not download ${entry.source.name}: ${(cause as Error).message}`;
+    } finally { downloading = false; }
+  }
+
   async function downloadSources() {
     if (busy || !projectEntries.length) return;
     const selectedEntries = [...projectEntries];
@@ -108,6 +125,10 @@
             <small>{entry.alignment.method === 'auto' ? 'Auto align' : 'Manual anchors'} &nbsp; · &nbsp; {entry.parts.length} {entry.parts.length === 1 ? 'part' : 'parts'}</small>
             <NotePreview note={entry.note} focusable={false} />
           </button>
+          <div class="entry-downloads">
+            <button onclick={() => downloadImage(entry, false)} disabled={busy} aria-label={`Download source image ${entry.source.name}`} title={`Download original: ${entry.source.name}`}><Icon name="export" size={16} />Source</button>
+            <button onclick={() => downloadImage(entry, true)} disabled={busy} aria-label={`Download aligned image ${entry.source.name}`} title={`Download aligned PNG: ${entry.source.name}`}><Icon name="export" size={16} />Aligned</button>
+          </div>
         </div>
         <button class="delete" onclick={() => remove(entry)} disabled={busy} aria-label={`Delete entry from ${new Date(entry.createdAt).toLocaleString()}`} title="Delete entry">
           <Icon name="trash" />
@@ -177,6 +198,10 @@
   .entry-select strong { font-weight: 600; }
   .entry-select:disabled { cursor: not-allowed; }
   .entry-select :global(.note) { color: var(--ink-muted); font-size: 0.78rem; margin-top: 2px; }
+  .entry-downloads { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 10px; }
+  .entry-downloads button { align-items: center; background: transparent; border: 1px solid var(--hairline); border-radius: 8px; color: var(--accent); cursor: pointer; display: inline-flex; font-size: 0.78rem; gap: 6px; min-height: 40px; padding: 6px 10px; }
+  .entry-downloads button:hover { background: var(--surface); }
+  .entry-downloads button:disabled { cursor: not-allowed; opacity: 0.5; }
   .image-open, .part-open { background: transparent; border: 0; color: var(--ink); cursor: pointer; padding: 0; text-align: left; width: 100%; }
   .reopen .image-open { margin: 14px 0 4px; }
   .reopen :global(.note) { color: var(--ink-muted); font-size: 0.85rem; margin-top: 4px; }

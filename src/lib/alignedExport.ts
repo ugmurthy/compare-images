@@ -78,6 +78,16 @@ async function alignedPng(entry: HistoryEntry): Promise<Blob> {
   }
 }
 
+export async function downloadSourceImage(entry: HistoryEntry, aligned: boolean): Promise<void> {
+  const blob = aligned ? await alignedPng(entry) : entry.source.file;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = aligned ? `aligned_${safeName(entry.source.name.replace(/\.[^.]+$/, ''))}.png` : entry.source.name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export async function downloadAlignedSources(entries: HistoryEntry[], onprogress: (message: string) => void): Promise<string> {
   if (!entries.length) throw new Error('No saved source images to export.');
   onprogress('Reading photo capture timestamps…');

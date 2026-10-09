@@ -1,5 +1,5 @@
 import { unzipSync } from 'fflate';
-import { downloadAlignedSources, photoCaptureTime, prepareAlignedExport } from '../src/lib/alignedExport';
+import { downloadAlignedSources, downloadSourceImage, photoCaptureTime, prepareAlignedExport } from '../src/lib/alignedExport';
 import type { HistoryEntry } from '../src/lib/history';
 
 // Run against Vite in a disposable browser: await (await import('/tests/alignedExport.browser.ts')).testAlignedExport()
@@ -106,32 +106,47 @@ export async function testAlignedExport(): Promise<string> {
   let downloadName = '';
   const progress: string[] = [];
   URL.createObjectURL = (blob) => {
-    if (blob instanceof Blob && blob.type === 'application/zip') exported = blob;
+    if (blob instanceof Blob) exported = blob;
     return createURL(blob);
   };
   HTMLAnchorElement.prototype.click = function () { downloads++; downloadName = this.download; };
   try {
+    await downloadSourceImage(entries[0], false);
+    check(downloads === 1 && downloadName === 'photo.jpeg', 'Single original keeps its filename');
+    const original = new Uint8Array(await exported!.arrayBuffer());
+    const expected = new Uint8Array(await entries[0].source.file.arrayBuffer());
+    check(exported!.type === 'image/jpeg' && original.length === expected.length && original.every((byte, index) => byte === expected[index]), 'Original download preserves all bytes, including EXIF, without rotation or alignment');
+    await downloadSourceImage(entries[0], true);
+    check(downloads === 2 && downloadName === 'aligned_photo.png' && exported!.type === 'image/png', 'Single aligned JPEG uses original basename, aligned_ prefix, and correct PNG extension');
+    const aligned = exported!;
+    await downloadSourceImage({ ...entries[1], source: { ...entries[1].source, name: 'study.v2.png' } }, true);
+    check(downloadName === 'aligned_study.v2.png', 'PNG keeps its extension and dots within basename');
+    await downloadSourceImage({ ...entries[2], source: { ...entries[2].source, name: 'drawing' } }, true);
+    check(downloadName === 'aligned_drawing.png', 'Extensionless source gets a PNG extension');
+    const beforeZip = downloads;
     const result = await downloadAlignedSources(entries, (message) => progress.push(message));
-    check(downloads === 1 && downloadName === 'Capture Study-aligned-sources.zip', 'One automatic project ZIP download');
+    check(downloads === beforeZip + 1 && downloadName === 'Capture Study-aligned-sources.zip', 'One automatic project ZIP download');
     check(result.includes('3 aligned images') && result.includes('1 photo had no readable capture timestamp'), 'Completion reports count and undated fallback');
     check(progress.some((message) => message.includes('3 of 3')), 'Progress reaches final image');
     const archiveBytes = new Uint8Array(await exported!.arrayBuffer());
     check(new DataView(archiveBytes.buffer).getUint16(8, true) === 8, 'ZIP entries use DEFLATE compression');
     const files = unzipSync(archiveBytes);
     check(Object.keys(files).join(',') === 'Capture Study_01.png,Capture Study_02.png,Capture Study_03.png', 'Archive uses project-derived names for all ordered aligned sources');
-    const bitmap = await createImageBitmap(new Blob([files['Capture Study_01.png'].slice().buffer], { type: 'image/png' }));
-    try {
-      check(bitmap.width === 120 && bitmap.height === 100, 'Output uses reference dimensions');
-      const canvas = document.createElement('canvas');
-      canvas.width = 120; canvas.height = 100;
-      const context = canvas.getContext('2d')!;
-      context.drawImage(bitmap, 0, 0);
-      const red = context.getImageData(50, 40, 1, 1).data;
-      const white = context.getImageData(34, 22, 1, 1).data;
-      check(red[0] > 220 && red[1] < 40 && red[2] < 40, 'Original red rectangle is rotated clockwise and translated by saved homography');
-      check(white[0] > 220 && white[1] > 220 && white[2] > 220, 'Saved translation applied, not just rotation');
-      check(context.getImageData(1, 1, 1, 1).data[3] === 0, 'Alignment border remains transparent in PNG');
-    } finally { bitmap.close(); }
+    for (const png of [aligned, new Blob([files['Capture Study_01.png'].slice().buffer], { type: 'image/png' })]) {
+      const bitmap = await createImageBitmap(png);
+      try {
+        check(bitmap.width === 120 && bitmap.height === 100, 'Output uses reference dimensions');
+        const canvas = document.createElement('canvas');
+        canvas.width = 120; canvas.height = 100;
+        const context = canvas.getContext('2d')!;
+        context.drawImage(bitmap, 0, 0);
+        const red = context.getImageData(50, 40, 1, 1).data;
+        const white = context.getImageData(34, 22, 1, 1).data;
+        check(red[0] > 220 && red[1] < 40 && red[2] < 40, 'Original red rectangle is rotated clockwise and translated by saved homography');
+        check(white[0] > 220 && white[1] > 220 && white[2] > 220, 'Saved translation applied, not just rotation');
+        check(context.getImageData(1, 1, 1, 1).data[3] === 0, 'Alignment border remains transparent in PNG');
+      } finally { bitmap.close(); }
+    }
 
     const cappedResult = await downloadAlignedSources(hundred, () => {});
     check(cappedResult.includes('1 entry beyond the 99-image limit was ignored'), 'Completion reports ignored entries');
@@ -141,9 +156,13 @@ export async function testAlignedExport(): Promise<string> {
     try { await downloadAlignedSources([{ ...entries[0], alignment: { ...entries[0].alignment, homography: [] } }], () => {}); }
     catch (error) { failed = (error as Error).message.includes('photo.jpeg'); }
     check(failed && downloads === beforeFailure, 'Bad alignment reports filename and does not download a partial archive');
+    failed = false;
+    try { await downloadSourceImage({ ...entries[0], alignment: { ...entries[0].alignment, homography: [] } }, true); }
+    catch { failed = true; }
+    check(failed && downloads === beforeFailure, 'Bad single alignment fails without downloading an image');
   } finally {
     URL.createObjectURL = createURL;
     HTMLAnchorElement.prototype.click = click;
   }
-  return 'PASS: real EXIF capture timestamps, offsets/subseconds, undated fallback, 98/99/100 limit, names, compressed ZIP, auto-download, rotation/homography pixels, and error handling';
+  return 'PASS: original source bytes, individual aligned PNGs and filenames, real EXIF capture timestamps, offsets/subseconds, undated fallback, 98/99/100 limit, names, compressed ZIP, auto-download, rotation/homography pixels, and error handling';
 }
