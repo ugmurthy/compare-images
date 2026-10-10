@@ -4,6 +4,7 @@
   import MemberArea from './MemberArea.svelte';
   import Icon from './components/Icon.svelte';
   import SubscriptionPage from './components/SubscriptionPage.svelte';
+  import LandingPage from './components/LandingPage.svelte';
   import { signupIntent, rememberSignup, type PlanId } from './lib/subscriptions';
   import { authConfigurationError, supabase } from './lib/supabase';
 
@@ -14,7 +15,9 @@
   const referral = intent.referral;
   if (referral) rememberSignup(intent.plan, referral);
   let page = $state(callbackUrl.pathname);
-  let mode = $state<Mode>(callbackUrl.pathname === '/auth/reset-password' ? 'reset' : referral ? 'register' : 'login');
+  let mode = $state<Mode>(callbackUrl.pathname === '/auth/reset-password' ? 'reset'
+    : callbackUrl.pathname === '/signup' || (callbackUrl.pathname === '/' && callbackUrl.searchParams.has('ref') && referral) ? 'register'
+    : callbackUrl.pathname === '/auth/forgot-password' ? 'forgot' : 'login');
   let session = $state<Session | null>(null);
   let ready = $state(false);
   let busy = $state(false);
@@ -38,7 +41,8 @@
     error = '';
     notice = '';
     callbackFailed = false;
-    replacePath('/');
+    replacePath(next === 'register' ? '/signup' : next === 'forgot' ? '/auth/forgot-password'
+      : next === 'reset' ? '/auth/reset-password' : session ? '/' : '/signin');
   }
 
   onMount(() => {
@@ -190,14 +194,21 @@
   }
 </script>
 
-<svelte:window onpopstate={() => page = window.location.pathname} />
+<svelte:window onpopstate={() => {
+  page = window.location.pathname;
+  if (page === '/signup') mode = 'register';
+  else if (page === '/signin' || page === '/') mode = 'login';
+  else if (page === '/auth/forgot-password') mode = 'forgot';
+}} />
 
-{#if ready && !session && page === '/pricing' && !authConfigurationError}
+{#if !session && page === '/' && mode === 'login' && (ready || authConfigurationError)}
+  <LandingPage />
+{:else if ready && !session && page === '/pricing' && !authConfigurationError}
   <SubscriptionPage onBack={() => chooseMode('login')} onChoose={(plan) => { selectedPlan = plan; chooseMode('register'); }} />
 {:else if authConfigurationError || !ready || callbackFailed || !session || mode === 'reset'}
   <main class="auth-page">
     <section class="auth-card" aria-labelledby="auth-title">
-      <div class="auth-brand"><Icon name="logo" size={24} /><span>Compare Sketch</span></div>
+      <a class="auth-brand" href="/" aria-label="Compare Sketch home"><Icon name="logo" size={24} /><span>Compare Sketch</span></a>
       {#if authConfigurationError}
         <h1 id="auth-title">Authentication needs configuration</h1>
         <p role="alert">{authConfigurationError}</p>
@@ -211,7 +222,7 @@
         <button class="btn" onclick={() => chooseMode('forgot')}>Request a new reset link</button>
       {:else}
         <h1 id="auth-title">{title}</h1>
-        <p>{mode === 'register' ? 'One account for the apps using our shared identity service.' : mode === 'forgot' ? 'We’ll email you a link to choose a new password.' : mode === 'reset' ? 'Use a strong, unique password for your account.' : 'Sign in to align, compare, and measure your sketches.'}</p>
+        <p>{mode === 'register' ? 'Try every feature free for 3 months. No credit card needed.' : mode === 'forgot' ? 'We’ll email you a link to choose a new password.' : mode === 'reset' ? 'Use a strong, unique password for your account.' : 'Sign in to align, compare, and measure your sketches.'}</p>
         {#if mode === 'register'}
           <label for="signup-plan">Subscription type</label>
           <select id="signup-plan" bind:value={selectedPlan} disabled={busy}>
@@ -276,7 +287,7 @@
 <style>
   .auth-page { display: grid; min-height: 100dvh; padding: 32px 20px; place-items: center; }
   .auth-card { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 18px; max-width: 440px; padding: 32px; width: 100%; }
-  .auth-brand { align-items: center; color: var(--accent); display: flex; font-weight: 600; gap: 10px; }
+  .auth-brand { align-items: center; color: var(--accent); display: flex; font-weight: 600; gap: 10px; text-decoration: none; }
   h1 { font-size: 1.65rem; line-height: 1.2; }
   p, small { color: var(--ink-muted); }
   .google { width: 100%; }

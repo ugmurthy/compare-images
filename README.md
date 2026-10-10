@@ -43,6 +43,22 @@ bun run dev
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
+## Public landing page
+
+Signed-out visitors at `/` see a Compare/Measure feature showcase. `/signup`
+and `/signin` open the existing authentication forms; valid `/?ref=…` links
+still open referred signup directly. Signed-in visitors continue into the app.
+
+The silent H.264 loops and JPEG posters in `public/demos/` are cropped from the
+provided **CleanShot 2026-10-09 at 5.08.15 PM** recording, with account details,
+project names and filenames excluded. Source segments: compare parts 6.25–9.65s,
+measurement 23–31.5s, line colors 24.4–33.4s, magnifier 23.5–27.3s. The manual
+alignment still is from 4.2s: the source shows the saved result, not anchor placement.
+Loops use 24 fps, H.264 CRF 25, `yuv420p`, no audio and fast-start metadata.
+Only visible demos autoplay; they pause offscreen and in background tabs, respect
+reduced motion, and have explicit play/pause controls. The original recording is
+not included in the repository.
+
 ## Authentication setup (shared Supabase identity)
 
 The frontend is a **client-only Svelte 5/Vite SPA**, not SvelteKit or SSR. It uses
