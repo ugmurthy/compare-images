@@ -6,6 +6,7 @@ A web application for aligning and comparing two similar pencil/charcoal sketch 
 
 - **Shared reference/source measurements**: In Measure, switch between **Reference** and **Source** for the whole image or current part. Source measurement uses the aligned source in reference coordinates, so align it first. Calibration and recalibration always use the full reference; that single saved scale applies to both whole images and all their parts. Switching images clears temporary measurement points.
 - **Close part comparison**: Side-by-side parts sit across a narrow seam, with the reference right-justified and source left-justified. Color-coded captions distinguish them; stacked and overlay layouts remain available.
+- **Part pair download**: The download icon in side-by-side and stacked part views saves both displayed crops as one full-resolution PNG, with 24px Reference/Source border labels and the selected layout. Filenames use the source basename plus the part number, e.g. `sketch_02.png`; an unsaved selection uses the next part number.
 - **Image Upload**: Drag-and-drop or browse for two sketch images (reference and source)
 - **Source Rotation**: Rotate the source clockwise in 90° steps before aligning
 - **App navigation**: A top bar switches between **Compare**, **Measure** (enabled once a reference is loaded; measures the current part when opened from Compare parts), and **History**

@@ -4,10 +4,11 @@
   import type { Region } from '../lib/region';
   import type { SavedPart } from '../lib/history';
 
-  let { reference, aligned, region, onback, onnewregion, onmeasure, parts = [], selectedPart = null, onprevious, onnext, onsave }: {
+  let { reference, aligned, region, sourceName, onback, onnewregion, onmeasure, parts = [], selectedPart = null, onprevious, onnext, onsave }: {
     reference: HTMLImageElement;
     aligned: ImageData;
     region: Region;
+    sourceName: string;
     onback: () => void;
     onnewregion: () => void;
     onmeasure: () => void;
@@ -21,6 +22,9 @@
   let mode = $state<'side-by-side' | 'stacked' | 'overlay'>('side-by-side');
   let opacity = $state(0.5);
   let playing = $state(false);
+  let downloading = $state(false);
+  let downloadStatus = $state('');
+  let downloadError = $state('');
   let heading: HTMLHeadingElement;
   let referenceCanvas: HTMLCanvasElement;
   let sourceCanvas: HTMLCanvasElement;
@@ -50,6 +54,50 @@
       frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
+  }
+
+  async function downloadPair() {
+    if (downloading || mode === 'overlay') return;
+    downloading = true;
+    downloadStatus = '';
+    downloadError = '';
+    const number = partIndex >= 0 ? partIndex + 1 : parts.length + 1;
+    const basename = sourceName.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || 'source';
+    const filename = `${basename}_${String(number).padStart(2, '0')}.png`;
+    const canvas = document.createElement('canvas');
+    const width = referenceCanvas.width;
+    const height = referenceCanvas.height;
+    const captionHeight = 32;
+    const gap = 4;
+    canvas.width = mode === 'stacked' ? width : width * 2 + gap;
+    canvas.height = mode === 'stacked' ? (height + captionHeight) * 2 + gap : height + captionHeight;
+    try {
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.font = '24px system-ui, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      // Copy the displayed crops before encoding, so later navigation cannot change this download.
+      for (const [index, image] of [referenceCanvas, sourceCanvas].entries()) {
+        const x = mode === 'stacked' ? 0 : index * (width + gap);
+        const y = mode === 'stacked' ? index * (height + captionHeight + gap) : 0;
+        context.fillStyle = index === 0 ? '#3050d0' : '#c0583f';
+        context.fillText(index === 0 ? 'Reference' : 'Source', x + width / 2, y + captionHeight / 2, width);
+        context.drawImage(image, x, y + captionHeight);
+      }
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Could not encode the part image pair.')), 'image/png');
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadStatus = `Download started: ${filename}`;
+    } catch (cause) { downloadError = `Could not download part pair: ${(cause as Error).message}`; }
+    finally { downloading = false; canvas.width = canvas.height = 0; }
   }
 
   $effect(() => {
@@ -111,6 +159,10 @@
     {/if}
     <span class="tool-sep" aria-hidden="true"></span>
     <button class="btn" data-focus="measure-part" title="Measure this reference or aligned source part using the reference scale" onclick={onmeasure}><Icon name="measure" /><span class="label">Measure part</span></button>
+    {#if mode !== 'overlay'}
+      <button class="btn icon" aria-label="Download part image pair" aria-busy={downloading} disabled={downloading}
+        title={`Download this ${mode === 'stacked' ? 'stacked' : 'side-by-side'} part pair as one PNG`} onclick={downloadPair}><Icon name="export" /></button>
+    {/if}
     <span class="tool-spacer"></span>
     <button class="btn" aria-label="New part" title="New part — select a new region on the whole image" onclick={onnewregion}>
       <Icon name="select" /><span class="label" aria-hidden="true">New part</span>
@@ -123,6 +175,8 @@
       </span>
     {/if}
   </div>
+  {#if downloadStatus}<p class="download-status" role="status">{downloadStatus}</p>{/if}
+  {#if downloadError}<p class="download-error" role="alert">{downloadError}</p>{/if}
   <div class="parts-grid" class:stacked={mode === 'stacked'} class:overlay={mode === 'overlay'}>
     <figure class="frame">
       <figcaption class="frame-caption">
@@ -163,6 +217,9 @@
   .heading-top h2:focus { outline: none; }
   .part-description { color: var(--ink-muted); font-size: 0.875rem; line-height: 1.6; margin-top: 4px; max-width: 80ch; overflow-wrap: anywhere; white-space: pre-wrap; }
   .part-toolbar { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 8px; position: sticky; top: calc(var(--app-bar-height) + 8px); z-index: 20; }
+  .download-status, .download-error { font-size: 0.85rem; overflow-wrap: anywhere; }
+  .download-status { color: var(--ink-muted); }
+  .download-error { color: var(--danger); }
   .opacity-tools { align-items: center; display: flex; gap: 8px; }
   .opacity-control { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.75rem; gap: 6px; }
   .opacity-control input { width: 140px; }

@@ -789,7 +789,7 @@
       <p class="privacy-note"><Icon name="info" size={16} />Your images never leave this browser.</p>
     </section>
   {:else if showingParts && selectedRegion && activeResult}
-    <PartsView reference={refImg} aligned={activeResult.aligned} region={selectedRegion} onback={closeParts}
+    <PartsView reference={refImg} aligned={activeResult.aligned} region={selectedRegion} sourceName={srcFile?.name ?? 'source'} onback={closeParts}
       parts={savedParts} selectedPart={selectedPart} onprevious={() => adjacentPart(-1)} onnext={() => adjacentPart(1)}
       onmeasure={() => openMeasurement(selectedRegion)}
       onsave={() => showSavePanel(true)} onnewregion={() => { selectedRegion = null; void closeParts(); }} />
