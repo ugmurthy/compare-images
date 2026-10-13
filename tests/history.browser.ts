@@ -22,13 +22,20 @@ export async function testHistoryStorage(): Promise<string> {
   }
   const reference = new File(['reference A'], 'same.png', { type: 'image/png' });
   const differentReference = new File(['reference B'], 'same.png', { type: 'image/png' });
+  const anchors = [
+    { id: 2, ref: { x: 12, y: 23 }, src: { x: 10, y: 20 } },
+    { id: 4, ref: { x: 302, y: 33 }, src: { x: 300, y: 30 } },
+    { id: 7, ref: { x: 282, y: 223 }, src: { x: 280, y: 220 } },
+    { id: 9, ref: { x: 22, y: 203 }, src: { x: 20, y: 200 } }
+  ];
   function entry(id: string, file = reference): HistoryEntry {
     return {
       id, version: 2, projectName: 'Study', createdAt: `2026-10-0${id}T12:00:00Z`, note: `Note ${id}`,
       reference: { name: file.name, width: 320, height: 240, file, thumbnail: 'reference thumbnail' },
       source: { name: `source-${id}.png`, width: 320, height: 240, rotations: 1,
         file: new File([`source ${id}`], `source-${id}.png`, { type: 'image/png' }), thumbnail: `source thumbnail ${id}` },
-      alignment: { method: 'manual', homography: [1, 0, 2, 0, 1, 3, 0, 0, 1], inlierCount: 4 },
+      alignment: { method: 'manual', homography: [1, 0, 2, 0, 1, 3, 0, 0, 1], inlierCount: 4,
+        ...(id === '1' ? { anchors } : {}) },
       parts: [{ id: 'part', name: 'Detail', note: 'Part note', region: { x: 2, y: 3, width: 40, height: 50 }, thumbnail: 'part thumbnail' }]
     };
   }
@@ -59,6 +66,8 @@ export async function testHistoryStorage(): Promise<string> {
 
   let restored = await listHistory();
   await inspect(3, 2);
+  check(JSON.stringify(restored.find((record) => record.id === '1')?.alignment.anchors) === JSON.stringify(anchors), 'Stored anchor IDs and both image coordinates survive migration');
+  check(restored.find((record) => record.id === '2')?.alignment.anchors === undefined, 'Older comparisons without anchors remain supported');
   check(restored.map((record) => record.id).join(',') === '3,2,1', 'Timestamp sorting preserved');
   for (const record of restored) {
     check(await record.reference.file.text() === (record.id === '3' ? 'reference B' : 'reference A'), 'Same filename does not merge different contents');
@@ -154,6 +163,7 @@ export async function testHistoryStorage(): Promise<string> {
   await scaleDone;
   scaleDB.close();
   await importHistory(new File([await exported!.text()], 'backup.json'));
+  check(JSON.stringify((await listHistory()).find((record) => record.id === '1')?.alignment.anchors) === JSON.stringify(anchors), 'Anchor pairs survive actual export and import');
   check(JSON.stringify(await loadCalibration(reference)) === JSON.stringify(calibration), 'Import restores calibration');
   await saveCalibration(reference, { ...calibration, horizontal: 7 });
   await inspect(5, 2);
@@ -187,6 +197,11 @@ export async function testHistoryStorage(): Promise<string> {
   for (const invalid of ['{', JSON.stringify({ version: 1, entries: [] }), JSON.stringify({ version: 2, entries: [
     { ...fresh, id: 'must-not-save' }, { ...fresh, id: 'bad', source: { ...fresh.source, file: 'https://example.com/image.png' } }
   ] }), JSON.stringify({ version: 2, entries: [{ ...fresh, alignment: { ...fresh.alignment, homography: [1] } }] }),
+  ...[
+    anchors.slice(0, 3), [...anchors.slice(0, 3), anchors[0]],
+    anchors.map((anchor) => ({ ...anchor, src: null })),
+    anchors.map((anchor) => ({ ...anchor, src: { x: 321, y: 0 } }))
+  ].map((invalidAnchors) => JSON.stringify({ version: 2, entries: [{ ...fresh, alignment: { ...fresh.alignment, anchors: invalidAnchors } }] })),
   JSON.stringify({ version: 2, entries: [{ ...fresh, reference: { ...fresh.reference, calibration: { ...calibration, horizontal: 0 } } }] })]) {
     let rejected = false;
     try { await importHistory(new File([invalid], 'invalid.json')); }
@@ -196,5 +211,5 @@ export async function testHistoryStorage(): Promise<string> {
   }
   for (const record of await listHistory()) await deleteHistory(record.id);
   await inspect(0, 0);
-  return 'PASS: migration, reference deduplication, shared calibration persistence, calibration export/import and local overwrite protection, non-overwriting entry/part merges, summary counts, repeated/concurrent imports, invalid-backup atomicity, and reference cleanup';
+  return 'PASS: anchor persistence/export/import and legacy compatibility, migration, reference deduplication, shared calibration persistence, calibration export/import and local overwrite protection, non-overwriting entry/part merges, summary counts, repeated/concurrent imports, invalid-backup atomicity, and reference cleanup';
 }

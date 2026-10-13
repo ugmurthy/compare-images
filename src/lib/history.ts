@@ -1,5 +1,6 @@
 import type { Region } from './region';
 import { validCalibration, type Calibration } from './measurement';
+import type { CompleteAnchor } from './manualAnchors';
 
 export interface SavedPart {
   id: string;
@@ -17,7 +18,7 @@ export interface HistoryEntry {
   source: { name: string; width: number; height: number; rotations: number; file: File; thumbnail: string };
   createdAt: string;
   note: string;
-  alignment: { method: 'manual' | 'auto'; homography: number[]; inlierCount: number };
+  alignment: { method: 'manual' | 'auto'; homography: number[]; inlierCount: number; anchors?: CompleteAnchor[] };
   parts: SavedPart[];
 }
 
@@ -204,6 +205,14 @@ export async function importHistory(file: File): Promise<ImportSummary> {
       || !record.alignment || !['manual', 'auto'].includes(record.alignment.method)
       || !Array.isArray(record.alignment.homography) || record.alignment.homography.length !== 9
       || !record.alignment.homography.every(number) || !number(record.alignment.inlierCount)
+      || (record.alignment.anchors !== undefined && (record.alignment.method !== 'manual'
+        || !Array.isArray(record.alignment.anchors) || record.alignment.anchors.length < 4
+        || new Set(record.alignment.anchors.map((anchor: any) => anchor?.id)).size !== record.alignment.anchors.length
+        || !record.alignment.anchors.every((anchor: any) => anchor && Number.isSafeInteger(anchor.id) && anchor.id > 0
+          && anchor.ref && number(anchor.ref.x) && number(anchor.ref.y) && anchor.ref.x >= 0 && anchor.ref.x <= record.reference.width
+          && anchor.ref.y >= 0 && anchor.ref.y <= record.reference.height
+          && anchor.src && number(anchor.src.x) && number(anchor.src.y) && anchor.src.x >= 0 && anchor.src.x <= record.source.width
+          && anchor.src.y >= 0 && anchor.src.y <= record.source.height)))
       || !Array.isArray(record.parts) || !record.parts.every(part)
       || (record.reference.calibration !== undefined && !validCalibration(record.reference.calibration, record.reference.width, record.reference.height))) throw new Error('Backup contains an invalid history entry.');
     const entry: HistoryEntry = {
@@ -212,7 +221,10 @@ export async function importHistory(file: File): Promise<ImportSummary> {
         thumbnail: record.reference.thumbnail, file: decode(record.reference.file, record.reference.name) },
       source: { name: record.source.name, width: record.source.width, height: record.source.height,
         rotations: record.source.rotations, thumbnail: record.source.thumbnail, file: decode(record.source.file, record.source.name) },
-      alignment: { method: record.alignment.method, homography: record.alignment.homography, inlierCount: record.alignment.inlierCount },
+      alignment: { method: record.alignment.method, homography: record.alignment.homography, inlierCount: record.alignment.inlierCount,
+        ...(record.alignment.anchors !== undefined ? { anchors: record.alignment.anchors.map((anchor: CompleteAnchor) => ({
+          id: anchor.id, ref: { x: anchor.ref.x, y: anchor.ref.y }, src: { x: anchor.src.x, y: anchor.src.y }
+        })) } : {}) },
       parts: record.parts.map((item: SavedPart) => ({ id: item.id, name: item.name, note: item.note, thumbnail: item.thumbnail,
         region: { x: item.region.x, y: item.region.y, width: item.region.width, height: item.region.height } }))
     };

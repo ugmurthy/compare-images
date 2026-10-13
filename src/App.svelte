@@ -51,6 +51,7 @@
   let manualResult = $state<AlignResult | null>(null);
   let autoResult = $state<AlignResult | null>(null);
   let manualEditing = $state(true);
+  let alignmentOptionsVisible = $state(true);
   let manualAnchors: ManualAnchor[] = $state([]);
   let selectedManualAnchorId: number | null = $state(null);
   let anchorListExpanded = $state(false);
@@ -201,15 +202,26 @@
     if (mode === 'visual') { selectMode('visual'); return; }
     if (mode === 'auto') {
       selectMode('auto');
-      if (!autoResult) void processImages('auto');
+      if (!autoResult || savedHere) void processImages('auto');
       return;
     }
     selectMode('manual');
     manualEditing = !manualResult;
   }
 
+  function editAlignment() {
+    alignmentOptionsVisible = true;
+    if ((currentEntry?.alignment.method ?? comparisonMode) === 'manual') {
+      selectMode('manual');
+      manualEditing = true;
+    }
+  }
+
   function cancelAnchors() {
-    if (manualResult) manualEditing = false;
+    if (manualResult) {
+      manualEditing = false;
+      if (savedHere) alignmentOptionsVisible = false;
+    }
     else selectMode('visual');
   }
 
@@ -364,6 +376,7 @@
     manualResult = null;
     autoResult = null;
     manualEditing = true;
+    alignmentOptionsVisible = true;
     currentEntry = null;
     selectedPartId = '';
     savePanel = false;
@@ -561,7 +574,8 @@
       id: crypto.randomUUID(), version: 2, projectName: projectName.trim(), createdAt: new Date().toISOString(), note: entryNote,
       reference: { name: refFile.name, width: refImg.naturalWidth, height: refImg.naturalHeight, file: refFile, thumbnail: thumbnail(refImg) },
       source: { name: srcFile.name, width: srcImg.naturalWidth, height: srcImg.naturalHeight, rotations: sourceRotations, file: srcFile, thumbnail: thumbnail(srcImg) },
-      alignment: { method: activeResult.method, homography: [...activeResult.homography], inlierCount: activeResult.inlierCount },
+      alignment: { method: activeResult.method, homography: [...activeResult.homography], inlierCount: activeResult.inlierCount,
+        ...(activeResult.method === 'manual' ? { anchors: $state.snapshot(completeManualAnchors) } : {}) },
       parts: []
     };
   }
@@ -656,8 +670,14 @@
       srcImg = source.image;
       sourceRotations = entry.source.rotations;
       comparisonMode = entry.alignment.method;
-      if (entry.alignment.method === 'manual') { manualResult = result; manualEditing = false; }
+      if (entry.alignment.method === 'manual') {
+        manualResult = result;
+        manualEditing = false;
+        manualAnchors = $state.snapshot(entry.alignment.anchors ?? []);
+        nextManualAnchorId = Math.max(0, ...manualAnchors.map((anchor) => anchor.id)) + 1;
+      }
       else autoResult = result;
+      alignmentOptionsVisible = false;
       currentEntry = entry;
       viewMode = defaultViewMode();
       historyOpen = false;
@@ -815,17 +835,19 @@
           <button aria-pressed={comparisonMode === 'visual'} onclick={() => chooseAlignment('visual')} disabled={processingMode !== null} title="Show the original images, without alignment">
             <Icon name="image" /><span class="label">Originals</span>
           </button>
+          {#if alignmentOptionsVisible}
           <button aria-pressed={comparisonMode === 'auto'} onclick={() => chooseAlignment('auto')} disabled={processingMode !== null || (cvState !== 'ready' && !autoResult)}
-            title={autoResult ? 'Show the automatic alignment' : 'Align the source to the reference automatically'}>
+            title={savedHere && comparisonMode === 'auto' ? 'Run automatic alignment again' : autoResult ? 'Show the automatic alignment' : 'Align the source to the reference automatically'}>
             <Icon name="auto" /><span class="label">{processingMode === 'auto' ? 'Aligning…' : 'Auto align'}</span>
           </button>
           <button aria-pressed={comparisonMode === 'manual'} onclick={() => chooseAlignment('manual')} disabled={processingMode !== null}
             title={manualResult ? 'Show the manual alignment' : 'Align by clicking matching points on both images'}>
             <Icon name="manual" /><span class="label">{processingMode === 'manual' ? 'Aligning…' : 'Manual align'}</span>
           </button>
+          {/if}
         </div>
-        {#if comparisonMode === 'manual' && manualResult && !manualEditing}
-          <button class="btn quiet" onclick={() => manualEditing = true} title="Adjust the anchor points and re-apply"><Icon name="edit" /><span class="label">Edit anchors</span></button>
+        {#if !alignmentOptionsVisible || (comparisonMode === 'manual' && manualResult && !manualEditing)}
+          <button class="btn quiet" onclick={editAlignment} disabled={processingMode !== null} title={currentEntry?.alignment.method === 'auto' ? 'Choose automatic or manual realignment' : 'Adjust the anchor points and re-apply'}><Icon name="edit" /><span class="label">Edit anchors</span></button>
         {/if}
 
           <span class="tool-sep" aria-hidden="true"></span>
@@ -897,6 +919,9 @@
 
       <div id="comparison-workspace" class="workspace-body">
         {#if editingAnchors}
+          {#if currentEntry?.alignment.method === 'manual' && !currentEntry.alignment.anchors}
+            <p class="hint" role="status">This older comparison did not save its anchor points. Add new pairs to realign, or Cancel to keep the saved alignment.</p>
+          {/if}
           <AnchorEditor
             {refImg}
             {srcImg}
