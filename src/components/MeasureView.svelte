@@ -9,13 +9,17 @@
   import Magnifier from './Magnifier.svelte';
   import Icon from './Icon.svelte';
 
-  let { image, file, region = null, onback }: {
+  let { image, file, aligned = null, hasSource = false, region = null, onback }: {
     image: HTMLImageElement;
     file: File;
+    aligned?: ImageData | null;
+    hasSource?: boolean;
     region?: Region | null;
     onback: () => void;
   } = $props();
 
+  let side = $state<'reference' | 'source'>('reference');
+  let sourceImage = $state.raw<HTMLImageElement | null>(null);
   let calibration = $state<Calibration | null>(null);
   let loading = $state(true);
   let saving = $state(false);
@@ -44,6 +48,7 @@
   let pointShades = $state<(CrosshairShades | undefined)[]>([]);
   let cursorShades = $state<CrosshairShades>(DEFAULT_SHADES);
   const guideMask = $props.id();
+  let activeImage = $derived(!calibrating && side === 'source' && sourceImage ? sourceImage : image);
   let bounds = $derived(calibrating || !region
     ? { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight } : region);
   let scale = $derived(Math.min(surfaceWidth / bounds.width, surfaceHeight / bounds.height));
@@ -61,8 +66,37 @@
     && (axes !== 'vertical' ? candidate.points[0].x !== candidate.points[1].x : true)
     && (axes !== 'horizontal' ? candidate.points[0].y !== candidate.points[1].y : true));
 
+  // The aligned source shares reference coordinates, so no second scale is needed.
+  $effect(() => {
+    sourceImage = null;
+    if (!aligned) return;
+    let disposed = false;
+    let url = '';
+    const canvas = document.createElement('canvas');
+    canvas.width = aligned.width;
+    canvas.height = aligned.height;
+    canvas.getContext('2d')!.putImageData(aligned, 0, 0);
+    canvas.toBlob((blob) => {
+      if (disposed) return;
+      if (!blob) { error = 'Could not prepare the aligned source for measurement.'; return; }
+      url = URL.createObjectURL(blob);
+      const source = new Image();
+      source.src = url;
+      void source.decode().then(() => {
+        if (!disposed) sourceImage = source;
+      }).catch(() => {
+        if (!disposed) error = 'Could not load the aligned source for measurement.';
+      });
+    });
+    return () => {
+      disposed = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  });
+
+  $effect(() => { sampler = createSampler(activeImage); });
+
   onMount(() => {
-    sampler = createSampler(image);
     const observer = new ResizeObserver(([entry]) => {
       surfaceWidth = entry.contentRect.width;
       surfaceHeight = entry.contentRect.height;
@@ -111,6 +145,13 @@
     notice = '';
   }
 
+  function selectImage(next: 'reference' | 'source') {
+    if (next === side) return;
+    clearPoints();
+    side = next;
+    zoom = 1;
+  }
+
   function setScale() {
     clearPoints();
     axes = 'both';
@@ -128,7 +169,7 @@
       calibration = saved;
       calibrating = false;
       clearPoints();
-      notice = 'Calibration saved for this reference and all its parts.';
+      notice = 'Calibration saved for the reference, aligned source, and all their parts.';
       zoom = 1;
       surface.focus();
     } catch (cause) { error = `Could not save calibration: ${(cause as Error).message}`; }
@@ -239,18 +280,30 @@
   onkeyupcapture={(event) => { if (event.key === 'Shift') shiftHeld = event.shiftKey; }}
   onblur={() => shiftHeld = false} />
 
-<section class="measure-page" aria-label="Measure reference">
+<section class="measure-page" aria-label="Measure images">
   <header class="measure-head">
     <button class="btn quiet back" aria-label="Back to comparison" title="Back" onclick={onback} disabled={saving}><Icon name="back" /><span>Back</span></button>
     <div>
-      <h2>Measure {region ? 'part' : 'reference'}</h2>
-      <p>Calibrate once on a grid or known span, then measure horizontal and vertical distances between features.</p>
+      <h2>Measure {region ? 'part' : 'images'}</h2>
+      <p>Calibrate on the reference once, then measure the reference or aligned source with the same scale.</p>
     </div>
   </header>
   <div class="measure-layout">
     <div class="image-panel frame">
       <div class="image-tools">
-        <span class="chip" class:accent={calibrating}>{#if calibrating}<span class="dot"></span>Calibrating · full reference{:else}{region ? 'Reference part' : 'Full reference'}{/if}</span>
+        {#if calibrating}
+          <span class="chip accent"><span class="dot"></span>Calibrating · full reference</span>
+        {:else}
+          <div class="segmented" role="group" aria-label="Image to measure">
+            <button aria-label="Measure reference" aria-pressed={side === 'reference'} onclick={() => selectImage('reference')}><span class="swatch reference" aria-hidden="true"></span>Reference</button>
+            {#if hasSource || aligned}
+              <button aria-label="Measure source" aria-pressed={side === 'source'} disabled={!sourceImage || loading}
+                title={!aligned ? 'Align the source in Compare to use the reference scale' : !sourceImage ? 'Preparing aligned source…' : 'Measure the aligned source using the reference scale'}
+                onclick={() => selectImage('source')}><span class="swatch source" aria-hidden="true"></span>Source</button>
+            {/if}
+          </div>
+          <span class="chip">{side === 'source' ? region ? 'Aligned source part' : 'Full aligned source' : region ? 'Reference part' : 'Full reference'}</span>
+        {/if}
         <span class="step-hint" aria-live="polite">
           {#if loading}Loading…
           {:else if calibrating}{points.length === 0 ? 'Click the first corner of a known span' : points.length === 1 ? 'Click the opposite corner' : 'Drag the markers to refine, then save the scale'}
@@ -281,7 +334,7 @@
           {/snippet}
           <!-- Clip to the measurable bounds: a part's neighbouring pixels would otherwise fill the letterbox but ignore clicks. -->
           <defs><clipPath id="{guideMask}-clip"><rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} /></clipPath></defs>
-          <image href={image.src} width={image.naturalWidth} height={image.naturalHeight} clip-path="url(#{guideMask}-clip)" />
+          <image href={activeImage.src} width={activeImage.naturalWidth} height={activeImage.naturalHeight} clip-path="url(#{guideMask}-clip)" />
           {#if guidePoints}
             <defs><mask id={guideMask} maskUnits="userSpaceOnUse" x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height}>
               <rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} fill="white" />
@@ -349,7 +402,7 @@
         <section class="panel-card scale-card">
           <div class="card-head">
             <h3><span class="step-badge done"><Icon name="check" size={12} /></span>Reference scale</h3>
-            <button class="btn quiet" aria-label="Redo calibration" title="Redo calibration for the reference and all its parts" onclick={setScale}><Icon name="grid" /><span aria-hidden="true">Redo</span></button>
+            <button class="btn quiet" aria-label="Redo calibration" title="Redo the shared scale on the full reference" onclick={setScale}><Icon name="grid" /><span aria-hidden="true">Redo</span></button>
           </div>
           {#if calibration}
             <dl>
@@ -360,7 +413,8 @@
             <p class="muted small">No scale yet — distances can't be measured until you set one.</p>
             <button class="btn primary" aria-label="Set calibration" title="Set reference calibration" onclick={setScale}><Icon name="grid" /><span aria-hidden="true">Set scale</span></button>
           {/if}
-          <p class="muted small">Shared by the full reference and every part.</p>
+          <p class="muted small">Shared by the whole reference, aligned source, and all their parts.</p>
+          {#if hasSource && !aligned}<p class="muted small">Align the source in Compare before measuring it with the reference scale.</p>{/if}
         </section>
         <section class="panel-card">
           <div class="card-head">
@@ -391,7 +445,7 @@
     </aside>
   </div>
   {#if magnified && !(panning && zoom > 1) && !hideOverlays}
-    <Magnifier {image} point={magnified} {surface} {sampler} />
+    <Magnifier image={activeImage} point={magnified} {surface} {sampler} />
   {/if}
 </section>
 
@@ -405,6 +459,8 @@
   .measure-layout { align-items: start; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 320px; }
   .image-panel { min-width: 0; }
   .image-tools { align-items: center; border-bottom: 1px solid var(--hairline); display: flex; flex-wrap: wrap; gap: 8px 10px; min-height: 52px; padding: 6px 8px 6px 12px; }
+  .segmented button { gap: 6px; }
+  .swatch { border-radius: 3px; height: 10px; width: 10px; }
   .step-hint { color: var(--ink); font-size: 0.85rem; font-weight: 500; }
   .zoom { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.82rem; gap: 8px; }
   .zoom select { min-height: 36px; }

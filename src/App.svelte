@@ -710,7 +710,7 @@
       <Icon name="compare" /><span class="nav-label">Compare</span>
     </button>
     <button id="nav-measure" aria-current={view === 'measure' ? 'page' : undefined} aria-disabled={!refImg} onclick={() => void goMeasure()}
-      title={refImg ? (showingParts ? 'Measure distances in this part of the reference' : 'Measure distances on the reference') : 'Add a reference image to measure it'}>
+      title={refImg ? (showingParts ? 'Measure the reference or aligned source part' : 'Measure the reference or aligned source') : 'Add a reference image to measure it'}>
       <Icon name="measure" /><span class="nav-label">Measure</span>
     </button>
     <button aria-current={view === 'history' ? 'page' : undefined} onclick={goHistory} title="Saved projects, comparisons, and parts">
@@ -758,7 +758,8 @@
     {#if errorMsg}<p class="notice error" role="alert">{errorMsg}</p>{/if}
     <HistoryView entries={historyEntries} onopen={openHistoryEntry} oncreate={startProjectEntry} ondelete={removeHistoryEntry} onstart={() => historyOpen = false} />
   {:else if measuring && refImg && refFile}
-    <MeasureView image={refImg} file={refFile} region={measurementRegion} onback={() => { void closeMeasurement().catch((error) => errorMsg = error.message); }} />
+    <MeasureView image={refImg} file={refFile} aligned={activeResult?.aligned ?? null} hasSource={!!srcImg}
+      region={measurementRegion} onback={() => { void closeMeasurement().catch((error) => errorMsg = error.message); }} />
   {:else if !refImg || !srcImg}
     <section class="upload">
       <div class="hero">

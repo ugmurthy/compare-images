@@ -110,7 +110,7 @@
       </div>
     {/if}
     <span class="tool-sep" aria-hidden="true"></span>
-    <button class="btn" data-focus="measure-part" title="Measure distances in this part of the reference" onclick={onmeasure}><Icon name="measure" /><span class="label">Measure part</span></button>
+    <button class="btn" data-focus="measure-part" title="Measure this reference or aligned source part using the reference scale" onclick={onmeasure}><Icon name="measure" /><span class="label">Measure part</span></button>
     <span class="tool-spacer"></span>
     <button class="btn" aria-label="New part" title="New part — select a new region on the whole image" onclick={onnewregion}>
       <Icon name="select" /><span class="label" aria-hidden="true">New part</span>
@@ -167,13 +167,17 @@
   .opacity-control { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.75rem; gap: 6px; }
   .opacity-control input { width: 140px; }
   .opacity-control output { color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; width: 2.6rem; }
-  .parts-grid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 auto; max-width: 1400px; width: 100%; }
+  .parts-grid { display: grid; gap: 4px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 auto; max-width: 1400px; width: 100%; }
   .parts-grid.stacked { grid-template-columns: 1fr; max-width: 900px; }
   .parts-grid.overlay { grid-template-columns: 1fr; max-width: 1100px; }
   .overlay .source-frame { display: none; }
   figure { margin: 0; }
   .canvas-wrap { background: var(--canvas-bg); padding: 8px; position: relative; }
   canvas { display: block; height: clamp(280px, calc(100dvh - 310px - var(--dock-space, 0px)), 860px); object-fit: contain; width: 100%; }
+  .parts-grid:not(.stacked):not(.overlay) .canvas-wrap { padding: 4px; }
+  .parts-grid:not(.stacked):not(.overlay) > figure:first-child .frame-caption { justify-content: flex-end; }
+  .parts-grid:not(.stacked):not(.overlay) canvas { object-position: right center; }
+  .parts-grid:not(.stacked):not(.overlay) .source-frame canvas { object-position: left center; }
   .stacked canvas { height: clamp(220px, 42vh, 460px); }
   .overlay-canvas { height: calc(100% - 16px); left: 8px; pointer-events: none; position: absolute; top: 8px; width: calc(100% - 16px); }
   .tabular { font-variant-numeric: tabular-nums; }

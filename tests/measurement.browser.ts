@@ -23,6 +23,9 @@ export async function testMeasurement(): Promise<string> {
   const image = new Image();
   image.src = url;
   await image.decode();
+  context.fillStyle = '#406040';
+  context.fillRect(0, 0, 800, 600);
+  const aligned = context.getImageData(0, 0, 800, 600);
   const calibration: Calibration = { points: [{ x: 100, y: 100 }, { x: 500, y: 300 }], horizontal: 2, vertical: 3, unit: 'cm' };
   await saveCalibration(file, calibration);
   const target = document.createElement('div');
@@ -54,7 +57,7 @@ export async function testMeasurement(): Promise<string> {
     await tick();
   }
   try {
-    component = mount(MeasureView, { target, props: { image, file, region: { x: 100, y: 150, width: 400, height: 200 }, onback: () => {} } });
+    component = mount(MeasureView, { target, props: { image, file, aligned, region: { x: 100, y: 150, width: 400, height: 200 }, onback: () => {} } });
     await waitFor(() => !!target.querySelector('.results'));
     let surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
     async function hover(x: number, y: number, element: Element = surface) {
@@ -240,12 +243,53 @@ export async function testMeasurement(): Promise<string> {
     await tick();
     await hover(430, 255);
     check(target.querySelectorAll('[data-endpoint]').length === 0 && !target.querySelector('.results')!.textContent!.includes('%'), 'Escape removes the anchor and the measurement');
+    await waitFor(() => !target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.disabled);
+    target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.click();
+    await tick();
+    check(surface.viewBox.baseVal.x === 100 && surface.viewBox.baseVal.y === 150
+      && surface.viewBox.baseVal.width === 400 && surface.viewBox.baseVal.height === 200, 'Source parts keep reference-space crop coordinates');
+    const sourceUrl = surface.querySelector('image')!.getAttribute('href')!;
+    const source = new Image();
+    source.src = sourceUrl;
+    await source.decode();
+    context.drawImage(source, 0, 0);
+    check(sourceUrl !== image.src && context.getImageData(420, 260, 1, 1).data.slice(0, 3).join(',') === '64,96,64', 'Source selection displays aligned source pixels, not the reference');
+    await place(180, 190);
+    await hover(420, 260);
+    check(target.querySelectorAll('.results strong')[0].textContent === '60%'
+      && target.querySelectorAll('.results strong')[1].textContent === '35%'
+      && target.querySelector('.results')!.textContent!.includes('1.2 cm')
+      && target.querySelector('.results')!.textContent!.includes('1.05 cm'), 'Source parts use the same separate reference calibration spans and paper sizes');
+    check(target.querySelector('.magnifier image')!.getAttribute('href') === sourceUrl, 'Source magnifier uses source pixels');
+    target.querySelector<HTMLButtonElement>('[aria-label="Redo calibration"]')!.click();
+    await tick();
+    check(surface.querySelector('image')!.getAttribute('href') === image.src
+      && surface.viewBox.baseVal.x === 0 && surface.viewBox.baseVal.width === 800
+      && surface.viewBox.baseVal.height === 600, 'Recalibrating from a source part always uses the full reference');
+    target.querySelector<HTMLButtonElement>('[aria-label="Cancel calibration"]')!.click();
+    await tick();
+    check(surface.querySelector('image')!.getAttribute('href') === sourceUrl, 'Cancel returns to the selected source part');
+    target.querySelector<HTMLButtonElement>('[aria-label="Measure reference"]')!.click();
+    await tick();
+    check(surface.querySelector('image')!.getAttribute('href') === image.src
+      && target.querySelectorAll('[data-endpoint]').length === 0, 'Switching images clears transient anchors and restores reference pixels');
+    check(JSON.stringify(await loadCalibration(file)) === JSON.stringify(calibration), 'Switching and cancelling source recalibration do not create or change the reference scale');
     await unmount(component);
-    component = mount(MeasureView, { target, props: { image, file, onback: () => {} } });
+    component = mount(MeasureView, { target, props: { image, file, aligned, onback: () => {} } });
     await waitFor(() => !!target.querySelector('.results'));
     surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
     check(target.querySelectorAll('[data-endpoint]').length === 0 && !target.querySelector('.results')!.textContent!.includes('%'), 'Measurements disappear when the view is reopened');
     check(JSON.stringify(await loadCalibration(file)) === JSON.stringify(calibration), 'Calibration survives reopening');
+    await waitFor(() => !target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.disabled);
+    target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.click();
+    await tick();
+    check(surface.viewBox.baseVal.width === 800 && surface.viewBox.baseVal.height === 600, 'Whole source uses the full reference coordinate system');
+    await place(100, 100);
+    await hover(600, 250);
+    check(target.querySelectorAll('.results strong')[0].textContent === '125%'
+      && target.querySelectorAll('.results strong')[1].textContent === '75%'
+      && target.querySelector('.results')!.textContent!.includes('2.5 cm')
+      && target.querySelector('.results')!.textContent!.includes('2.25 cm'), 'Whole source measurements share the persisted reference scale, including distances larger than the calibration span');
     target.querySelector<HTMLButtonElement>('[aria-label="Redo calibration"]')!.click();
     await tick();
     await checkZoom('2', 400, 300);
@@ -304,7 +348,14 @@ export async function testMeasurement(): Promise<string> {
     await place(200, 200);
     await hover(400, 300);
     check(target.querySelectorAll('.results strong')[0].textContent === '50%' && target.querySelectorAll('.results strong')[1].textContent === '—', 'An uncalibrated axis is unavailable');
-    return 'PASS: Shift keeps connecting lines visible while hiding labels/cursor, all five line color shortcuts including Shift-held uppercase, modifier/select exclusion, exact position restoration, dual-Shift handling and blur recovery, live measurements, click/keyboard reanchoring, adaptive crosshairs, part coordinates, zoom invariance, clearing, unchanged calibration, single-axis recalibration, and invalid-size rejection';
+    check(target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.getAttribute('aria-pressed') === 'true', 'Saving a replacement scale returns to source measurement');
+    check(replaced?.points[0].x === 100 && replaced.points[1].x === 500, 'Source-triggered recalibration replaces the single reference calibration');
+    await unmount(component);
+    component = mount(MeasureView, { target, props: { image, file, hasSource: true, onback: () => {} } });
+    await waitFor(() => !!target.querySelector('.results'));
+    check(target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.disabled
+      && target.textContent!.includes('Align the source in Compare'), 'Unaligned source measurements require alignment rather than using an unrelated pixel scale');
+    return 'PASS: shared reference calibration for whole source and source parts, source pixels/magnifier, switching clears anchors, full-reference recalibration from source, replacement scale and alignment prerequisite; existing live measurement, crosshair, keyboard, zoom, persistence, and invalid-size checks';
   } finally {
     if (component) await unmount(component);
     target.remove();
