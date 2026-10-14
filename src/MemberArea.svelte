@@ -23,13 +23,13 @@
     } catch { if (!disposed) error = 'Could not check your subscription. Please retry. If this is a new installation, the membership backend must be configured.'; }
     finally { if (!disposed) loading = false; }
   }
-  function navigate(pricing: boolean) {
-    showPrices = pricing;
-    window.history.pushState(null, '', pricing ? '/pricing' : '/');
+  function navigate(path: '/' | '/pricing' | '/pricing#referrals') {
+    showPrices = path !== '/';
+    window.history.pushState(null, '', path);
   }
   onMount(() => {
     void refresh().then(() => {
-      if (!disposed && member && member.selected_plan !== member.plan) navigate(true);
+      if (!disposed && member && member.selected_plan !== member.plan) navigate('/pricing');
     });
     const timer = window.setInterval(() => { now = Date.now(); }, 1000);
     const focus = () => { void refresh(); };
@@ -51,11 +51,11 @@
   {#if active}
     <!-- Retain comparison data, but remove workspace controls and shortcuts. -->
     <App suspended={showPrices}>
-      {#snippet account()}<AccountMenu {user} {busy} {onSignOut} onSubscription={() => navigate(true)} />{/snippet}
+      {#snippet account()}<AccountMenu {user} {busy} {onSignOut} onSubscription={() => navigate('/pricing')} onInvite={() => navigate('/pricing#referrals')} />{/snippet}
     </App>
   {/if}
   {#if showPrices || !active}
-    <SubscriptionPage {member} email={user.email ?? ''} {active} onBack={() => navigate(false)} onRefresh={refresh} {onSignOut} />
+    <SubscriptionPage {member} email={user.email ?? ''} {active} onBack={() => navigate('/')} onRefresh={refresh} {onSignOut} />
   {/if}
   {#if error}<p class="member-error" role="alert">{error}</p>{/if}
 {/if}
