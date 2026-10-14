@@ -17,7 +17,7 @@ checks. No new frontend environment variables or payment secrets are needed.
 - A captured lifetime purchase removes expiry. Subsequent late yearly callbacks
   cannot downgrade lifetime access. Lifetime accounts cannot start new purchases.
 - All three plans expose the same features while active. Expired accounts can
-  subscribe, refresh access, share an unused referral link, and sign out, but the
+  subscribe, refresh access, share their invite link, and sign out, but the
   comparison workspace is unmounted. Existing browser-local data is not deleted.
 - Each account has one referral link with two reward slots. A new referred user
   must confirm their email and open the app. Each such activation rewards the
@@ -39,6 +39,20 @@ Prices are intentionally not chosen by the code. Paid plans start disabled and
 show **Price coming soon** until the owner supplies prices and Razorpay setup.
 The catalog defaults to INR; amounts are integer paise (₹1 = 100 paise). Confirm
 currency and any tax-inclusive pricing before enabling checkout.
+
+## Inviting a friend
+
+1. Sign in and open the account menu → **Invite friends**.
+2. Click **Copy link** and send the link by message or email. If clipboard access
+   is blocked, the app selects the link so it can be copied manually.
+3. The recipient opens the link directly in signup, then creates an account with
+   email or Google. Email signup still requires confirmation.
+
+Invites do not require an email address or a separate invitation record. The
+same personal link can be shared with any number of friends, including after
+both referral rewards have been earned. The reward limit remains two qualifying
+new users; it is not a limit on invitations or signups. Expired and Lifetime
+members can also copy their link from the subscription page.
 
 ## Deployment setup (owner approval required)
 

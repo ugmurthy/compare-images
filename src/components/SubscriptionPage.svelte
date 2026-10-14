@@ -12,6 +12,8 @@
   let busy = $state<PlanId | null>(null);
   let error = $state('');
   let notice = $state('');
+  let copyNotice = $state('');
+  let linkInput = $state<HTMLInputElement>();
   const referralLink = $derived(member ? `${window.location.origin}/?ref=${member.referral_code}` : '');
   const descriptions: Record<PlanId, string> = {
     free: 'Three months to explore every tool. No card needed.',
@@ -26,7 +28,13 @@
     catch { error = 'Prices are unavailable right now. Please try again.'; }
     finally { loading = false; }
   }
-  onMount(() => { void loadPrices(); });
+  onMount(() => {
+    void loadPrices();
+    if (window.location.hash === '#referrals') {
+      document.getElementById('referrals')?.scrollIntoView();
+      document.getElementById('referral-heading')?.focus({ preventScroll: true });
+    }
+  });
 
   function priceLabel(id: PlanId) {
     if (id === 'free') return 'Free';
@@ -49,8 +57,12 @@
     } finally { busy = null; }
   }
   async function copyLink() {
-    try { await navigator.clipboard.writeText(referralLink); notice = 'Referral link copied.'; }
-    catch { notice = 'Select and copy the referral link below.'; }
+    try { await navigator.clipboard.writeText(referralLink); copyNotice = 'Invite link copied. Send it to a friend to get started.'; }
+    catch {
+      linkInput?.focus();
+      linkInput?.select();
+      copyNotice = 'Could not copy automatically. Copy the selected link and send it to a friend.';
+    }
   }
 </script>
 
@@ -94,18 +106,20 @@
     <p class="payment-note">Paid plans use secure Razorpay checkout. No automatic renewals. Yearly purchases add 12 months to your remaining access, or start today if it has expired.</p>
     {#if error}<p class="error" role="alert">{error}</p><button class="btn" disabled={!!busy} onclick={() => void loadPrices()}>Retry prices</button>{/if}
     {#if notice}<p class="notice" role="status">{notice}</p>{/if}
-    <section class="referrals" aria-labelledby="referral-heading">
-      <div><span class="chip accent">Create together</span><h2 id="referral-heading">Give a friend a fresh perspective.</h2>
-        <p>Share your signup link with up to two new users. Each confirmed signup that opens the app earns you three extra months — up to six months in total.</p></div>
+    <section class="referrals" id="referrals" aria-labelledby="referral-heading">
+      <div><span class="chip accent">Create together</span><h2 id="referral-heading" tabindex="-1">Invite friends</h2>
+        <p>Copy your invite link and send it by message or email. Your friend can open it to create an account and try every feature free for 3 months.</p></div>
       {#if member}
         <div class="referral-details"><strong>{member.referrals_used} of 2 referrals rewarded</strong>
+          <label for="referral-link">Your invite link</label><div class="link-row"><input id="referral-link" bind:this={linkInput} readonly value={referralLink} onclick={(event) => event.currentTarget.select()} /><button class="btn" onclick={() => void copyLink()}>Copy link</button></div>
+          {#if copyNotice}<p class="notice" role="status">{copyNotice}</p>{/if}
           {#if member.plan === 'lifetime'}<p>You can still invite friends. Lifetime access already has no expiry to extend.</p>{/if}
           {#if member.referrals_used < 2}
-            <label for="referral-link">Your referral link</label><div class="link-row"><input id="referral-link" readonly value={referralLink} onclick={(event) => event.currentTarget.select()} /><button class="btn" onclick={() => void copyLink()}>Copy link</button></div>
-          {:else}<p>You’ve used both referral rewards. Thank you for sharing Compare Sketch.</p>{/if}
+            <p>Each new friend who confirms their email and opens the app earns you 3 extra months, up to 6 months in total.</p>
+          {:else}<p>You’ve earned both referral rewards. You can still invite more friends; further signups won’t add extra months.</p>{/if}
           {#if member.referral_result === 'unavailable'}<p>Your signup referral was invalid or already fully used. Your own access is unaffected.</p>{/if}
         </div>
-      {:else}<p>Create an account to get your personal referral link.</p>{/if}
+      {:else}<p>Create an account to get your personal invite link. Earn 3 extra months for each of your first two friends who confirms their email and opens the app.</p>{/if}
     </section>
     {#if member && !active}<p class="payment-note">Your saved sketches remain in this browser. Subscribe or earn a referral extension to reopen the workspace.</p>{/if}
   </main>
