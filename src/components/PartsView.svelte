@@ -3,6 +3,8 @@
   import Icon from './Icon.svelte';
   import type { Region } from '../lib/region';
   import type { SavedPart } from '../lib/history';
+  import GifDownload from './GifDownload.svelte';
+  import { overlayOpacityAt } from '../lib/overlayAnimation';
 
   let { reference, aligned, region, sourceName, onback, onnewregion, onmeasure, parts = [], selectedPart = null, onprevious, onnext, onsave }: {
     reference: HTMLImageElement;
@@ -50,7 +52,7 @@
     opacity = 0;
     const startedAt = performance.now();
     const animate = (now: number) => {
-      opacity = (1 - Math.cos(((now - startedAt) % 1600) / 1600 * 2 * Math.PI)) / 2;
+      opacity = overlayOpacityAt(now - startedAt);
       frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
@@ -156,6 +158,7 @@
           <output>{Math.round(opacity * 100)}%</output>
         </label>
       </div>
+      <GifDownload {reference} source={aligned} {region} {sourceName} />
     {/if}
     <span class="tool-sep" aria-hidden="true"></span>
     <button class="btn" data-focus="measure-part" title="Measure this reference or aligned source part using the reference scale" onclick={onmeasure}><Icon name="measure" /><span class="label">Measure part</span></button>

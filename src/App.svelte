@@ -26,6 +26,8 @@
   import type { Region } from './lib/region';
   import ImageDrop from './components/ImageDrop.svelte';
   import type { ComparisonMode } from './components/ModeSwitch.svelte';
+  import GifDownload from './components/GifDownload.svelte';
+  import { overlayOpacityAt } from './lib/overlayAnimation';
 
   let { account }: { account?: Snippet } = $props();
 
@@ -92,8 +94,6 @@
   let statusMsg = $state('');
   let errorMsg = $state('');
   let overlayAnimationFrame: number | null = null;
-
-  const OVERLAY_ANIMATION_DURATION = 1600;
 
   function defaultViewMode() {
     return window.matchMedia('(max-width: 719px)').matches ? 'stacked' : 'side-by-side';
@@ -429,8 +429,7 @@
     const startedAt = performance.now();
 
     const animate = (now: number) => {
-      const progress = ((now - startedAt) % OVERLAY_ANIMATION_DURATION) / OVERLAY_ANIMATION_DURATION;
-      overlayOpacity = (1 - Math.cos(progress * Math.PI * 2)) / 2;
+      overlayOpacity = overlayOpacityAt(now - startedAt);
       overlayAnimationFrame = requestAnimationFrame(animate);
     };
 
@@ -871,6 +870,7 @@
                 <output>{Math.round(overlayOpacity * 100)}%</output>
               </label>
             </div>
+            <GifDownload reference={refImg} source={activeResult?.aligned ?? srcImg} sourceName={srcFile?.name ?? 'source'} />
           {/if}
           <span title="Rotate source 90° clockwise"><button class="btn icon" onclick={rotateSource} disabled={sourceRotating} aria-label="Rotate source image 90 degrees clockwise"><Icon name="rotate" /></button></span>
           <span class="tool-sep" aria-hidden="true"></span>
