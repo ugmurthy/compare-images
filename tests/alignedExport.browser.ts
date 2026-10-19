@@ -1,5 +1,8 @@
+import { mount, tick, unmount } from 'svelte';
 import { unzipSync } from 'fflate';
 import { downloadAlignedSources, downloadSourceImage, photoCaptureTime, prepareAlignedExport } from '../src/lib/alignedExport';
+import { downloadHistoryGif } from '../src/lib/historyGif';
+import HistoryView from '../src/components/HistoryView.svelte';
 import type { HistoryEntry } from '../src/lib/history';
 
 // Run against Vite in a disposable browser: await (await import('/tests/alignedExport.browser.ts')).testAlignedExport()
@@ -165,4 +168,130 @@ export async function testAlignedExport(): Promise<string> {
     HTMLAnchorElement.prototype.click = click;
   }
   return 'PASS: original source bytes, individual aligned PNGs and filenames, real EXIF capture timestamps, offsets/subseconds, undated fallback, 98/99/100 limit, names, compressed ZIP, auto-download, rotation/homography pixels, and error handling';
+}
+
+export async function testHistoryGif(): Promise<string> {
+  const entries = (await alignedExportFixtures()).map((entry, index) => ({ ...entry,
+    alignment: { ...entry.alignment, homography: [1, 0, 12 + index * 20, 0, 1, 7, 0, 0, 1] }
+  }));
+  const target = document.createElement('div');
+  document.body.append(target);
+  let component: ReturnType<typeof mount> | undefined;
+  const createURL = URL.createObjectURL;
+  const click = HTMLAnchorElement.prototype.click;
+  const blobs = new Map<string, Blob>();
+  const downloads: { name: string; blob: Blob }[] = [];
+  URL.createObjectURL = (blob) => {
+    const url = createURL(blob);
+    if (blob instanceof Blob) blobs.set(url, blob);
+    return url;
+  };
+  HTMLAnchorElement.prototype.click = function () { downloads.push({ name: this.download, blob: blobs.get(this.href)! }); };
+  async function wait(predicate: () => boolean) {
+    for (let i = 0; i < 1000 && !predicate(); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+    check(predicate(), 'GIF export finishes');
+    await tick();
+  }
+  async function verify(blob: Blob, redCenters: number[]) {
+    check(blob.type === 'image/gif' && blob.size <= 4_000_000, 'GIF type and actual size budget');
+    const decoder = new ImageDecoder({ data: await blob.arrayBuffer(), type: 'image/gif' });
+    try {
+      await decoder.tracks.ready;
+      check(decoder.tracks.selectedTrack!.frameCount === redCenters.length, 'One frame per selected aligned source');
+      check(decoder.tracks.selectedTrack!.repetitionCount === Infinity, 'Progress GIF loops forever');
+      const canvas = document.createElement('canvas');
+      canvas.width = 120; canvas.height = 100;
+      const context = canvas.getContext('2d')!;
+      let duration = 0;
+      for (const [frameIndex, x] of redCenters.entries()) {
+        const { image } = await decoder.decode({ frameIndex });
+        try {
+          check(image.displayWidth === 120 && image.displayHeight === 100, 'Native reference aspect and small dimensions retained');
+          check(image.duration >= 20000, 'Frame delays avoid browser clamping');
+          duration += image.duration;
+          context.drawImage(image, 0, 0);
+          const red = context.getImageData(x, 40, 1, 1).data;
+          const white = context.getImageData(x - 20, 40, 1, 1).data;
+          check(red[0] > 220 && red[1] < 40 && red[2] < 40, `Frame ${frameIndex} follows capture/save chronology and saved rotation/homography`);
+          check(white[0] > 220 && white[1] > 220 && white[2] > 220, 'Previous drawings are cleared, not blended into later frames');
+          check(context.getImageData(1, 1, 1, 1).data.every((value) => value === 255), 'Transparent alignment borders become opaque white');
+        } finally { image.close(); }
+      }
+      check(duration === 2_000_000, `Decoded cycle is exactly 2 seconds, got ${duration} microseconds`);
+    } finally { decoder.close(); }
+  }
+  try {
+    component = mount(HistoryView, { target, props: {
+      // Another project must not leak into the selected project's GIF.
+      entries: [...entries, { ...entries[0], id: 'other', projectName: 'Other project' }],
+      async onopen() {}, async oncreate() {}, async ondelete() {}, onstart() {}
+    } });
+    await tick();
+    const button = target.querySelector<HTMLButtonElement>('[aria-label="Download history GIF for Capture Study"]')!;
+    button.click(); button.click(); await tick();
+    check(button.disabled && button.getAttribute('aria-busy') === 'true', 'Busy state blocks duplicate exports');
+    check([...target.querySelectorAll<HTMLButtonElement>('.entry-downloads button, .delete, aside button')].every((item) => item.disabled), 'History mutations and project switching disabled during export');
+    await wait(() => !button.disabled);
+    check(downloads.length === 1 && downloads[0].name === 'Capture Study-progress.gif', 'One project-named download from a double click');
+    check(target.textContent!.includes('Used save dates for 1 image'), 'Missing capture date fallback is reported');
+    // Capture chronology is fixture 1, fixture 0, then undated fixture 2 (save date), not input order.
+    await verify(downloads[0].blob, [72, 52, 92]);
+    await unmount(component); component = undefined;
+    await downloadHistoryGif([entries[0]], new AbortController().signal, () => {});
+    await verify(downloads.at(-1)!.blob, [52]);
+
+    for (const count of [99, 100, 101]) {
+      const many = Array.from({ length: count }, (_, index) => ({ ...entries[2], id: `many-${index}`,
+        createdAt: new Date(Date.UTC(2025, 0, 1, 0, 0, index)).toISOString(),
+        // Distinct endpoints verify that sampling does not simply truncate the newest entry.
+        alignment: entries[index === 0 ? 0 : index === count - 1 ? 2 : 1].alignment
+      }));
+      const status = await downloadHistoryGif(many.reverse(), new AbortController().signal, () => {});
+      const frames = Math.min(count, 100);
+      await verify(downloads.at(-1)!.blob, Array.from({ length: frames }, (_, index) => index === 0 ? 52 : index === frames - 1 ? 92 : 72));
+      check(status.includes('Evenly sampled') === (count > 100), 'Sampling is disclosed only above the 100-frame boundary');
+    }
+    const beforeFailure = downloads.length;
+    let failed = false;
+    try { await downloadHistoryGif([{ ...entries[0], alignment: { ...entries[0].alignment, homography: [] } }], new AbortController().signal, () => {}); }
+    catch (cause) { failed = (cause as Error).message.includes('photo.jpeg'); }
+    check(failed && downloads.length === beforeFailure, 'Invalid alignment names the source and never downloads a partial GIF');
+    const cancelled = new AbortController();
+    let aborted = false;
+    try { await downloadHistoryGif(entries, cancelled.signal, (message) => { if (message.startsWith('Aligning')) cancelled.abort(); }); }
+    catch (cause) { aborted = (cause as Error).name === 'AbortError'; }
+    check(aborted && downloads.length === beforeFailure, 'Cancellation stops preparation and prevents late downloads');
+
+    // Independent noisy photos exercise the compressed-size retry, not just a resolution limit.
+    const canvas = document.createElement('canvas');
+    canvas.width = 960; canvas.height = 720;
+    const context = canvas.getContext('2d')!;
+    const pixels = context.createImageData(960, 720);
+    const noisy: HistoryEntry[] = [];
+    let seed = 923;
+    for (let index = 0; index < 30; index++) {
+      for (let i = 0; i < pixels.data.length; i++) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        pixels.data[i] = i % 4 === 3 ? 255 : seed >>> 24;
+      }
+      context.putImageData(pixels, 0, 0);
+      const file = new File([await new Promise<Blob>((resolve) => canvas.toBlob((blob) => resolve(blob!)))], `noise-${index}.png`, { type: 'image/png' });
+      noisy.push({ ...entries[2], id: `noise-${index}`, reference: { ...entries[2].reference, width: 960, height: 720 },
+        source: { ...entries[2].source, file, rotations: 0, width: 960, height: 720 },
+        alignment: { ...entries[2].alignment, homography: [1, 0, 0, 0, 1, 0, 0, 0, 1] }
+      });
+    }
+    await downloadHistoryGif(noisy, new AbortController().signal, () => {});
+    const noise = downloads.at(-1)!.blob;
+    check(noise.size <= 4_000_000, 'Large noisy histories stay under the actual 4 MB budget');
+    const bitmap = await createImageBitmap(noise);
+    try { check(bitmap.width <= 640 && bitmap.width / bitmap.height === 4 / 3, 'Large GIF retains reference aspect ratio without exceeding 640px'); }
+    finally { bitmap.close(); }
+    return `PASS: History GIF UI download, project scoping, duplicate-click prevention, capture/save chronology, independent rotation/homography/white-border pixels, exact 2-second looping playback for 1/3/99/100/101 entries, timeline endpoint sampling, errors, cancellation, and large noisy-image size budget. Three-image GIF: ${downloads[0].blob.size} bytes; noisy GIF: ${noise.size} bytes.`;
+  } finally {
+    URL.createObjectURL = createURL;
+    HTMLAnchorElement.prototype.click = click;
+    if (component) await unmount(component);
+    target.remove();
+  }
 }

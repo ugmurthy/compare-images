@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import type { HistoryEntry } from '../lib/history';
   import Icon from './Icon.svelte';
   import NotePreview from './NotePreview.svelte';
@@ -19,6 +20,9 @@
   let busy = $derived(opening || deletingId !== null || downloading);
   let error = $state('');
   let level: 'projects' | 'entries' | 'detail' = $state('projects');
+  let gifController: AbortController | undefined;
+  let creatingGif = $state(false);
+  onDestroy(() => gifController?.abort());
 
   let projects = $derived([...new Map(entries.map((entry) => [`${entry.projectName}\0${entry.reference.name}`, {
     key: `${entry.projectName}\0${entry.reference.name}`, name: entry.projectName, reference: entry.reference.name
@@ -86,6 +90,25 @@
       error = (cause as Error).message;
     } finally { downloading = false; }
   }
+
+  async function downloadGif() {
+    if (busy || !projectEntries.length) return;
+    const selectedEntries = [...projectEntries];
+    const job = new AbortController();
+    gifController = job;
+    downloading = creatingGif = true;
+    error = '';
+    downloadStatus = 'Preparing history GIF…';
+    try {
+      const { downloadHistoryGif } = await import('../lib/historyGif');
+      downloadStatus = await downloadHistoryGif(selectedEntries, job.signal, (message) => downloadStatus = message);
+    } catch (cause) {
+      if (!job.signal.aborted) {
+        downloadStatus = '';
+        error = `Could not create GIF: ${(cause as Error).message}`;
+      }
+    } finally { downloading = creatingGif = false; }
+  }
 </script>
 
 {#if error}<p class="banner error" role="alert">{error}</p>{/if}
@@ -105,10 +128,17 @@
     <button class="level-back" onclick={() => level = 'projects'}><Icon name="back" size={16} />Projects</button>
     <div class="entries-heading">
       <h2>Comparisons</h2>
-      <button class="download-sources" onclick={downloadSources} disabled={busy}
-        aria-label={`Download aligned sources for ${activeProject?.name}`} title="Download aligned sources — newest capture first, up to 99 PNGs in a ZIP">
-        <Icon name="export" />
-      </button>
+      <div class="project-downloads">
+        <button class="download-sources download-gif" onclick={downloadGif} disabled={busy} aria-busy={creatingGif}
+          aria-label={`Download history GIF for ${activeProject?.name}`}
+          title="Aligned sources, oldest capture to newest (save date if undated). Loop: 2 seconds, up to 640px, under 4 MB. Over 100 images: evenly sampled, including first and latest.">
+          <Icon name="export" size={16} /><span>{creatingGif ? 'Creating…' : 'Download GIF'}</span>
+        </button>
+        <button class="download-sources" onclick={downloadSources} disabled={busy}
+          aria-label={`Download aligned sources for ${activeProject?.name}`} title="Download aligned sources — newest capture first, up to 99 PNGs in a ZIP">
+          <Icon name="export" />
+        </button>
+      </div>
     </div>
     <button class="new-entry" onclick={() => open(projectEntries[0], true)} disabled={busy}
       aria-label={`New comparison in ${activeProject?.name} using existing reference`} title="New comparison using existing reference">
@@ -178,9 +208,11 @@
   .project-text { min-width: 0; }
   .card button strong { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .card button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .entries-heading { align-items: center; display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .entries-heading { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; margin-bottom: 8px; }
   .entries-heading h2 { margin: 0; }
+  .project-downloads { display: flex; gap: 6px; }
   .download-sources { align-items: center; background: transparent; border: 1px solid var(--hairline); border-radius: 10px; color: var(--accent); cursor: pointer; display: flex; justify-content: center; min-height: 40px; min-width: 40px; }
+  .download-gif { font-size: 0.78rem; gap: 6px; padding: 6px 10px; }
   .download-sources:hover { background: var(--accent-tint); }
   .download-sources:disabled, .card > button:disabled { cursor: not-allowed; opacity: 0.5; }
   .new-entry { align-items: center; background: transparent; border: 1.5px dashed var(--dash); border-radius: var(--radius); color: var(--accent); cursor: pointer; display: flex; font-size: 0.85rem; font-weight: 500; gap: 8px; justify-content: center; margin: 0 0 10px; min-height: 52px; width: 100%; }

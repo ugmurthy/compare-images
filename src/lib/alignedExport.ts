@@ -47,7 +47,7 @@ export async function prepareAlignedExport(entries: HistoryEntry[]) {
   };
 }
 
-async function alignedPng(entry: HistoryEntry): Promise<Blob> {
+export async function alignedPng(entry: HistoryEntry, maxEdge?: number): Promise<Blob> {
   const url = URL.createObjectURL(entry.source.file);
   const canvas = document.createElement('canvas');
   try {
@@ -69,6 +69,15 @@ async function alignedPng(entry: HistoryEntry): Promise<Blob> {
     canvas.width = result.aligned.width;
     canvas.height = result.aligned.height;
     canvas.getContext('2d')!.putImageData(result.aligned, 0, 0);
+    if (maxEdge && Math.max(canvas.width, canvas.height) > maxEdge) {
+      const bitmap = await createImageBitmap(canvas);
+      try {
+        const scale = maxEdge / Math.max(canvas.width, canvas.height);
+        canvas.width = Math.max(1, Math.round(canvas.width * scale));
+        canvas.height = Math.max(1, Math.round(canvas.height * scale));
+        canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      } finally { bitmap.close(); }
+    }
     return await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not encode aligned image.')), 'image/png');
     });
