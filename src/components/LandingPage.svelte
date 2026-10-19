@@ -1,17 +1,18 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import DemoLoop from './DemoLoop.svelte';
+  let { signedIn = false }: { signedIn?: boolean } = $props();
 </script>
 
 <div class="landing">
   <a class="skip-link" href="#main">Skip to content</a>
   <header>
     <div class="header-inner">
-      <a class="wordmark" href="/" aria-label="Compare Sketch home"><Icon name="logo" size={26} /><span>Compare Sketch</span></a>
+      <a class="wordmark" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={26} /><span>SketchLens</span></a>
       <nav aria-label="Main navigation">
         <a href="#compare">Compare</a><a href="#measure">Measure</a><a href="/pricing">Pricing</a>
       </nav>
-      <div class="account-actions"><a class="btn quiet" href="/signin">Sign in</a><a class="btn primary" href="/signup">Start free <Icon name="next" size={15} /></a></div>
+      <div class="account-actions">{#if signedIn}<a class="btn primary" href="/">Open workspace <Icon name="next" size={15} /></a>{:else}<a class="btn quiet" href="/signin">Sign in</a><a class="btn primary" href="/signup">Start free <Icon name="next" size={15} /></a>{/if}</div>
     </div>
   </header>
 
@@ -86,7 +87,7 @@
     </section>
   </main>
 
-  <footer class="wrap"><a class="wordmark" href="/"><Icon name="logo" size={22} /><span>Compare Sketch</span></a><p>Built for a closer look.</p><a href="/pricing">Plans & pricing</a><a href="/signin">Sign in</a></footer>
+  <footer class="wrap"><a class="wordmark" href="/welcome"><Icon name="logo" size={22} /><span>SketchLens</span></a><p>Built for a closer look.</p><a href="/pricing">Plans & pricing</a><a href={signedIn ? '/' : '/signin'}>{signedIn ? 'Open workspace' : 'Sign in'}</a></footer>
 </div>
 
 <style>

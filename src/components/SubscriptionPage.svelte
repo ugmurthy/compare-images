@@ -68,7 +68,7 @@
 
 <div class="subscriptions">
   <header>
-    <span class="brand"><Icon name="logo" size={24} />Compare Sketch</span>
+    <a class="brand" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={24} />SketchLens</a>
     <div class="toolbar"><ThemeSelect />
       {#if !member || active}<button class="btn quiet" disabled={!!busy} onclick={onBack}>{member ? 'Back to app' : 'Back to sign in'}</button>{/if}
       {#if onSignOut}<button class="btn" disabled={!!busy} onclick={() => void onSignOut?.()}>Sign out</button>{/if}</div>
@@ -128,7 +128,7 @@
 <style>
   .subscriptions { min-height: 100dvh; }
   header { align-items: center; border-bottom: 1px solid var(--hairline); display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; padding: 16px 32px; }
-  .brand { align-items: center; color: var(--accent); display: flex; font-weight: 600; gap: 10px; }
+  .brand { align-items: center; color: var(--accent); display: flex; font-weight: 600; gap: 10px; text-decoration: none; }
   main { margin: auto; max-width: 1120px; padding: 48px 32px; }
   .intro { margin-bottom: 32px; text-align: center; }
   h1 { font-size: clamp(1.9rem, 5vw, 2.8rem); margin: 14px 0 10px; }

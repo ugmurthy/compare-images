@@ -181,7 +181,7 @@ try {
   await expectDOM('document.querySelector("#signup-plan").value === "free" && !document.querySelector(".app-bar")', 'Trial CTA opens free-plan registration without granting access');
   await browser('reload');
   await waitText('Create your account');
-  await browser('find', 'role', 'link', 'click', '--name', 'Compare Sketch home', '--exact');
+  await browser('find', 'role', 'link', 'click', '--name', 'SketchLens home', '--exact');
   await waitText('See the difference.');
   await browser('click', '.account-actions a[href="/signin"]');
   await waitText('Welcome back');
@@ -213,6 +213,12 @@ try {
   check(await browser('get', 'url') === `${origin}/`, 'Callback strips code, never follows next redirect');
   check(records.filter((record) => record.body.auth_code === 'confirmation-code').length === 1, 'Code exchanged exactly once');
   await browser('reload');
+  await waitForApp();
+  await browser('set', 'viewport', '1280', '900', '2');
+  await browser('find', 'role', 'link', 'click', '--name', 'SketchLens home', '--exact');
+  await waitText('See the difference.');
+  await expectDOM('!document.querySelector(".app-bar") && document.querySelector(".account-actions").textContent.includes("Open workspace")', 'Signed-in brand opens the public landing page, not the workspace');
+  await browser('click', '.account-actions a');
   await waitForApp();
   await capture('workspace');
   await expectDOM('!document.querySelector(".account-avatar img") && document.querySelector(".account-avatar").textContent.trim() === "A"', 'Missing profile photo falls back to email initial');
@@ -370,7 +376,7 @@ try {
   await browser('open', `${origin}/?ref=${referrerCode}`);
   await waitText('You’re signing up through a referral link');
   await capture('referral-registration');
-  await browser('find', 'role', 'link', 'click', '--name', 'Compare Sketch home', '--exact');
+  await browser('find', 'role', 'link', 'click', '--name', 'SketchLens home', '--exact');
   await waitText('See the difference.');
   await browser('click', '.account-actions a[href="/signin"]');
   await waitText('Welcome back');

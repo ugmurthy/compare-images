@@ -201,14 +201,14 @@
   else if (page === '/auth/forgot-password') mode = 'forgot';
 }} />
 
-{#if !session && page === '/' && mode === 'login' && (ready || authConfigurationError)}
-  <LandingPage />
+{#if (page === '/welcome' || (!session && page === '/' && mode === 'login')) && (ready || authConfigurationError)}
+  <LandingPage signedIn={!!session} />
 {:else if ready && !session && page === '/pricing' && !authConfigurationError}
   <SubscriptionPage onBack={() => chooseMode('login')} onChoose={(plan) => { selectedPlan = plan; chooseMode('register'); }} />
 {:else if authConfigurationError || !ready || callbackFailed || !session || mode === 'reset'}
   <main class="auth-page">
     <section class="auth-card" aria-labelledby="auth-title">
-      <a class="auth-brand" href="/" aria-label="Compare Sketch home"><Icon name="logo" size={24} /><span>Compare Sketch</span></a>
+      <a class="auth-brand" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={24} /><span>SketchLens</span></a>
       {#if authConfigurationError}
         <h1 id="auth-title">Authentication needs configuration</h1>
         <p role="alert">{authConfigurationError}</p>

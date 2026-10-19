@@ -730,10 +730,10 @@
 
 {#if !suspended}
 <header class="app-bar">
-  <div class="brand">
+  <a class="brand" href="/welcome" aria-label="SketchLens home">
     <span class="brand-mark" aria-hidden="true"><Icon name="logo" size={20} /></span>
-    <h1>Compare Sketch</h1>
-  </div>
+    <h1>SketchLens</h1>
+  </a>
   <nav class="primary-nav segmented" aria-label="Main">
     <button aria-current={view === 'compare' ? 'page' : undefined} onclick={goCompare} title="Compare your sketch with the reference">
       <Icon name="compare" /><span class="nav-label">Compare</span>
@@ -1019,7 +1019,7 @@
     top: 0;
     z-index: 30;
   }
-  .brand { align-items: center; display: flex; gap: 10px; min-width: 0; }
+  .brand { align-items: center; color: var(--ink); display: flex; gap: 10px; min-width: 0; text-decoration: none; }
   .brand-mark { align-items: center; background: var(--accent); border-radius: 9px; color: var(--on-accent); display: flex; flex: none; height: 32px; justify-content: center; width: 32px; }
   h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; }
   .primary-nav > button { min-height: 36px; padding: 0 0.9rem; }

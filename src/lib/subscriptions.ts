@@ -75,7 +75,7 @@ export async function purchasePlan(plan: 'yearly' | 'lifetime', email: string): 
   return new Promise<boolean>((resolve, reject) => {
     let verifying = false;
     const checkout = new window.Razorpay!({
-      ...order, name: 'Compare Sketch', description: `${planNames[plan]} · all features`, prefill: { email },
+      ...order, name: 'SketchLens', description: `${planNames[plan]} · all features`, prefill: { email },
       handler: (result) => {
         verifying = true;
         void billing({ action: 'verify-payment', order_id: order.order_id,
