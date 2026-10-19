@@ -116,7 +116,42 @@ export async function testSavedAlignment(): Promise<string> {
     check(target.textContent?.includes('older comparison did not save its anchor points') === true, 'Legacy manual entries explain missing historical anchors');
     await click('Cancel');
     check(!!find('Edit anchors') && !!target.querySelector('[aria-label="Saved part navigation"]'), 'Legacy alignment remains usable after cancel');
-    return 'PASS: saved manual/auto controls, whole image and saved parts, restored anchor IDs and coordinates on rotated originals, cancel, immutable saved anchors, edited-anchor resave, auto/manual choices, actual automatic realignment, and legacy compatibility';
+    for (const kind of ['manual', 'auto', 'legacy']) {
+      const previous = (await listHistory()).find((entry) => entry.projectName === `${kind} alignment study`)!;
+      await click('History');
+      [...target.querySelectorAll<HTMLButtonElement>('aside button')].find((button) => button.querySelector('strong')?.textContent === previous.projectName)!.click();
+      await tick();
+      await click(`New comparison in ${previous.projectName} using existing reference`);
+      await wait(() => !!target.querySelector('[aria-label="Source upload"] input'), 'New comparison asks for a source');
+      const input = target.querySelector<HTMLInputElement>('[aria-label="Source upload"] input')!;
+      const files = new DataTransfer(); files.items.add(previous.reference.file);
+      input.files = files.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+      await wait(() => !!find('Manual align') || !!find('Apply manual alignment'), 'New source loaded');
+      if (!previous.alignment.anchors) await click('Manual align');
+      const anchors = previous.alignment.anchors ?? [];
+      check(target.querySelectorAll('.anchor-handle').length === anchors.length, 'Only the latest comparison’s reference anchors are reused');
+      check(!target.querySelector('button[aria-label^="Source anchor "]'), 'Previous source points are not reused');
+      check(find('Apply manual alignment')!.disabled, 'Reused reference anchors still require new source points');
+      await click('Point list');
+      for (const anchor of anchors) {
+        const row = find(`Select point ${anchor.id}`)!.parentElement!;
+        check(row.textContent?.includes(`${anchor.ref.x}, ${anchor.ref.y}`) === true && row.querySelectorAll('.missing').length === 1, 'Reference IDs and coordinates are retained with missing source points');
+      }
+      if (anchors.length) {
+        const first = anchors[0];
+        await click(`Select point ${first.id}`);
+        find(`Select point ${first.id}`)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); await tick();
+        check(find(`Select point ${first.id}`)!.parentElement!.textContent?.includes(`${first.ref.x + 1}, ${first.ref.y}`) === true, 'Reused reference points remain editable');
+        check(JSON.stringify((await listHistory()).find((entry) => entry.id === previous.id)?.alignment.anchors) === JSON.stringify(anchors), 'Editing reused points leaves the previous comparison unchanged');
+        await click('Cancel'); await click('Rotate source image 90 degrees clockwise');
+        await wait(() => !find('Rotate source image 90 degrees clockwise')!.disabled, 'New source rotated');
+        await click('Manual align');
+        check(target.querySelectorAll('.anchor-handle').length === anchors.length, 'Rotating the new source preserves reference anchors');
+        await click('Clear all');
+        check(target.querySelectorAll('.anchor-handle').length === 0, 'Reused points can be cleared');
+      }
+    }
+    return 'PASS: saved alignment restoration and resave, auto realignment, legacy compatibility, and new comparisons reuse editable reference-only anchors from the latest entry without mutating history';
   } finally {
     if (app) await unmount(app);
     target.remove();

@@ -314,7 +314,7 @@
       sourceRotations = 0;
     }
     resetComparisons();
-    resetManualAnchors();
+    resetManualAnchors(side === 'src');
   }
 
   function handleCompactFile(event: Event, side: 'ref' | 'src') {
@@ -338,7 +338,7 @@
       srcImg = image;
       sourceRotations = (sourceRotations + 1) % 4;
       resetComparisons();
-      resetManualAnchors();
+      resetManualAnchors(true);
       statusMsg = 'Source rotated 90° clockwise. Ready to compare.';
     } catch (error) {
       errorMsg = `Could not rotate source: ${(error as Error).message}`;
@@ -382,11 +382,13 @@
     savePanel = false;
   }
 
-  function resetManualAnchors() {
-    manualAnchors = [];
+  function resetManualAnchors(keepReference = false) {
+    manualAnchors = keepReference
+      ? manualAnchors.filter((anchor) => anchor.ref !== null).map((anchor) => ({ ...anchor, src: null }))
+      : [];
     selectedManualAnchorId = null;
     anchorListExpanded = false;
-    nextManualAnchorId = 1;
+    nextManualAnchorId = Math.max(0, ...manualAnchors.map((anchor) => anchor.id)) + 1;
   }
 
   function clearAll() {
@@ -695,6 +697,9 @@
     refUrl = reference.url;
     refImg = reference.image;
     draftProjectName = entry.projectName;
+    manualAnchors = (entry.alignment.anchors ?? []).map((anchor) => ({ id: anchor.id, ref: { ...anchor.ref }, src: null }));
+    nextManualAnchorId = Math.max(0, ...manualAnchors.map((anchor) => anchor.id)) + 1;
+    if (manualAnchors.length) comparisonMode = 'manual';
     historyOpen = false;
     statusMsg = 'Reference loaded. Choose a new source image.';
     await tick();
