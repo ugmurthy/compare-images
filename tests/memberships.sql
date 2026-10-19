@@ -17,6 +17,7 @@ create table auth.users (
 );
 insert into auth.users (id, email_confirmed_at) values ('00000000-0000-4000-8000-000000000001', now());
 \ir ../supabase/migrations/202610090001_memberships.sql
+\ir ../supabase/migrations/202610190001_referral_email.sql
 
 begin;
 set local timezone = 'UTC';
@@ -122,3 +123,36 @@ select pg_temp.check((select referrals_used = 1 and expires_at = now() + interva
   where user_id = '00000000-0000-4000-8000-000000000006'), 'Expired inviter earns three months starting today');
 rollback;
 \echo PASS: trials, email/Google signup intent, confirmation, two referrals, replay, self/invalid referrals, expired rewards, month ends, RLS, write denial, payment idempotency, expiry/renewal, lifetime/late capture.
+
+begin;
+update public.sketch_memberships set expires_at = '2020-01-01',
+  referral_code = '10000000-0000-4000-8000-000000000001';
+set local role authenticated;
+set local request.jwt.claim.sub = '00000000-0000-4000-8000-000000000001';
+do $$ begin
+  perform public.sketch_reserve_invite(auth.uid());
+  raise exception 'Browser reserved email directly';
+exception when insufficient_privilege then null; end $$;
+reset role;
+set local role service_role;
+do $$ begin
+  if public.sketch_reserve_invite('00000000-0000-4000-8000-000000000001') <> '10000000-0000-4000-8000-000000000001'::uuid then
+    raise exception 'Wrong referral code'; end if;
+end $$;
+reset role;
+update public.sketch_memberships set plan = 'lifetime', expires_at = null;
+set local role service_role;
+do $$ begin
+  for i in 2..10 loop perform public.sketch_reserve_invite('00000000-0000-4000-8000-000000000001'); end loop;
+  begin
+    perform public.sketch_reserve_invite('00000000-0000-4000-8000-000000000001');
+    raise exception 'Eleventh invite was accepted';
+  exception when raise_exception then if sqlerrm <> 'Invite limit reached' then raise; end if; end;
+end $$;
+reset role;
+-- Once a rolling hour has elapsed, sending is allowed again.
+update public.sketch_invite_attempts set created_at = now() - interval '61 minutes';
+set local role service_role;
+select public.sketch_reserve_invite('00000000-0000-4000-8000-000000000001');
+rollback;
+\echo PASS: email reservation is service-only, returns own code, supports expired/lifetime members, rejects attempt 11, resets after an hour.

@@ -43,16 +43,41 @@ currency and any tax-inclusive pricing before enabling checkout.
 ## Inviting a friend
 
 1. Sign in and open the account menu → **Invite friends**.
-2. Click **Copy link** and send the link by message or email. If clipboard access
-   is blocked, the app selects the link so it can be copied manually.
+2. Enter a friend's email and click **Email invite**, or use **Copy link** to
+   share it yourself. The raw URL stays collapsed under **Show invite link**.
+   If clipboard access is blocked, the app reveals and selects it for manual copy.
 3. The recipient opens the link directly in signup, then creates an account with
    email or Google. Email signup still requires confirmation.
 
-Invites do not require an email address or a separate invitation record. The
+Copying does not require an email address or email-provider setup. The
 same personal link can be shared with any number of friends, including after
 both referral rewards have been earned. The reward limit remains two qualifying
 new users; it is not a limit on invitations or signups. Expired and Lifetime
 members can also copy their link from the subscription page.
+
+Email sending uses the separate `sketch-referral` Edge Function and Resend. It
+verifies the signed-in, email-confirmed user, gets their referral code from the
+database, and builds the URL from a configured canonical origin, not browser input.
+It allows at most 10 attempts per member per rolling hour, serialized in Postgres.
+Attempt records contain only member ID and timestamp, not recipient addresses.
+The address is passed to Resend for this invitation only. Resend's delivery and
+retention policies apply. No marketing subscription is created. Provider acceptance
+does not guarantee inbox delivery; ambiguous failures are not automatically retried.
+
+After review, apply `supabase/migrations/202610190001_referral_email.sql` following
+the membership migration, configure these **Edge Function secrets** securely, and
+deploy `sketch-referral` with `supabase functions deploy sketch-referral`:
+
+- `RESEND_API_KEY`: a sending key from Resend (never a browser variable).
+- `SKETCH_INVITE_FROM`: e.g. `SketchLens <invites@your-verified-domain>`; verify the
+  sender domain in Resend before inviting arbitrary recipients.
+- `SKETCH_APP_URL`: the deployed HTTPS app origin, matching where Copy link is used.
+
+Do not apply migrations or deploy to the shared project without owner approval.
+Test receipt and spam-folder handling with a consenting staging recipient first.
+If email isn't configured, copying still works. Operators may periodically delete
+attempt records older than one hour under their retention policy; newer records
+must remain for rate limiting.
 
 ## Deployment setup (owner approval required)
 

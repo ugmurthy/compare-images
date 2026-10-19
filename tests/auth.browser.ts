@@ -18,6 +18,7 @@ let googleCode = 0;
 let membershipFails = false;
 let pricesEnabled = true;
 let verificationFails = false;
+let invitationFails = false;
 const member = {
   user_id: '00000000-0000-4000-8000-000000000001', plan: 'free', selected_plan: 'free',
   expires_at: new Date(Date.now() + 90 * 86400000).toISOString(), activated_at: new Date().toISOString(),
@@ -58,6 +59,9 @@ const mock = Bun.serve({
     const failure = () => json({ code: 'mock_failure', msg: 'Private provider detail must not appear in the UI' }, 400);
     if (url.pathname === '/rest/v1/rpc/sketch_activate') {
       return membershipFails ? failure() : json(member);
+    }
+    if (url.pathname === '/functions/v1/sketch-referral') {
+      return invitationFails ? failure() : json({ sent: true });
     }
     if (url.pathname === '/functions/v1/sketch-billing') {
       if (body.action === 'prices') return json({ plans: [
@@ -416,11 +420,24 @@ try {
   await browser('press', 'ArrowUp');
   await expectDOM('document.activeElement.textContent.trim() === "Invite friends"', 'Invite friends is reachable by keyboard');
   await browser('press', 'Enter');
-  await browser('wait', '#referral-link');
-  await expectDOM('document.activeElement.id === "referral-heading" && document.querySelector("#referral-link").getBoundingClientRect().bottom <= innerHeight', 'Invite entry focuses the heading and brings the link into view');
+  await browser('wait', '#invite-email');
+  await expectDOM('document.activeElement.id === "referral-heading" && document.querySelector("#invite-email").getBoundingClientRect().bottom <= innerHeight && !document.querySelector("#referral-link").checkVisibility()', 'Invite entry focuses the heading, shows email form, and hides the raw URL');
   const inviteLink = `${origin}/?ref=${member.referral_code}`;
   await expectDOM(`document.querySelector('#referral-link').value === ${JSON.stringify(inviteLink)}`, 'Invite link uses the current origin and personal referral code');
   await capture('invite-ready');
+  await browser('fill', '#invite-email', 'friend@example.test');
+  await click('Email invite');
+  await waitText('Invitation accepted by the email service.');
+  check(records.findLast((entry) => entry.path === '/functions/v1/sketch-referral')?.body.email === 'friend@example.test', 'Email invitation sends the requested recipient');
+  await expectDOM('document.querySelector("#invite-email").value === ""', 'Successful invite clears the recipient');
+  await capture('invite-emailed');
+  invitationFails = true;
+  await browser('fill', '#invite-email', 'second@example.test');
+  await click('Email invite');
+  await waitText('Email delivery could not be confirmed.');
+  await expectDOM('document.querySelector("#invite-email").value === "second@example.test" && !document.body.textContent.includes("Private provider detail")', 'Failed invite keeps recipient and exposes a safe copy-link fallback');
+  await capture('invite-email-error');
+  invitationFails = false;
   await browser('clipboard', 'write', 'not-an-invite');
   await click('Copy link');
   await waitText('Invite link copied.');

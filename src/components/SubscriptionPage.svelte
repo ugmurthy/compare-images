@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import Icon from './Icon.svelte';
   import ThemeSelect from './ThemeSelect.svelte';
+  import { supabase } from '../lib/supabase';
   import { billing, planNames, purchasePlan, type Membership, type PlanId, type Price } from '../lib/subscriptions';
 
   let { member = null, email = '', active = false, onChoose, onBack, onRefresh, onSignOut }:
@@ -14,6 +15,11 @@
   let notice = $state('');
   let copyNotice = $state('');
   let linkInput = $state<HTMLInputElement>();
+  let showLink = $state(false);
+  let inviteEmail = $state('');
+  let sendingInvite = $state(false);
+  let inviteNotice = $state('');
+  let inviteError = $state('');
   const referralLink = $derived(member ? `${window.location.origin}/?ref=${member.referral_code}` : '');
   const descriptions: Record<PlanId, string> = {
     free: 'Three months to explore every tool. No card needed.',
@@ -59,10 +65,27 @@
   async function copyLink() {
     try { await navigator.clipboard.writeText(referralLink); copyNotice = 'Invite link copied. Send it to a friend to get started.'; }
     catch {
+      showLink = true;
+      await tick();
       linkInput?.focus();
       linkInput?.select();
       copyNotice = 'Could not copy automatically. Copy the selected link and send it to a friend.';
     }
+  }
+  async function emailLink(event: SubmitEvent) {
+    event.preventDefault();
+    if (sendingInvite || !supabase) return;
+    sendingInvite = true;
+    inviteNotice = '';
+    inviteError = '';
+    try {
+      const { data, error } = await supabase.functions.invoke('sketch-referral', { body: { email: inviteEmail.trim() } });
+      if (error || !data?.sent) throw new Error('Invite unavailable');
+      inviteNotice = 'Invitation accepted by the email service. Inbox delivery is not guaranteed; your friend may need to check spam.';
+      inviteEmail = '';
+    } catch {
+      inviteError = 'Email delivery could not be confirmed. Please copy your link instead. If you’ve sent several invites, try again in an hour.';
+    } finally { sendingInvite = false; }
   }
 </script>
 
@@ -108,10 +131,17 @@
     {#if notice}<p class="notice" role="status">{notice}</p>{/if}
     <section class="referrals" id="referrals" aria-labelledby="referral-heading">
       <div><span class="chip accent">Create together</span><h2 id="referral-heading" tabindex="-1">Invite friends</h2>
-        <p>Copy your invite link and send it by message or email. Your friend can open it to create an account and try every feature free for 3 months.</p></div>
+        <p>Email a personal invitation, or copy your link to share it yourself. Your friend can create an account and try every feature free for 3 months.</p></div>
       {#if member}
         <div class="referral-details"><strong>{member.referrals_used} of 2 referrals rewarded</strong>
-          <label for="referral-link">Your invite link</label><div class="link-row"><input id="referral-link" bind:this={linkInput} readonly value={referralLink} onclick={(event) => event.currentTarget.select()} /><button class="btn" onclick={() => void copyLink()}>Copy link</button></div>
+          <form onsubmit={emailLink}>
+            <label for="invite-email">Friend’s email address</label>
+            <div class="link-row"><input id="invite-email" type="email" autocomplete="off" maxlength="254" required bind:value={inviteEmail} disabled={sendingInvite} placeholder="friend@example.com" /><button class="btn primary" type="submit" disabled={sendingInvite}>{sendingInvite ? 'Sending…' : 'Email invite'}</button><button class="btn" type="button" onclick={() => void copyLink()}>Copy link</button></div>
+            <small>Only invite someone who would welcome it. Their address is used to send this invitation, not for marketing.</small>
+          </form>
+          {#if inviteError}<p class="error" role="alert">{inviteError}</p>{/if}
+          {#if inviteNotice}<p class="notice" role="status">{inviteNotice}</p>{/if}
+          <details bind:open={showLink}><summary>Show invite link</summary><label for="referral-link">Your invite link</label><input id="referral-link" bind:this={linkInput} readonly value={referralLink} onclick={(event) => event.currentTarget.select()} /></details>
           {#if copyNotice}<p class="notice" role="status">{copyNotice}</p>{/if}
           {#if member.plan === 'lifetime'}<p>You can still invite friends. Lifetime access already has no expiry to extend.</p>{/if}
           {#if member.referrals_used < 2}
@@ -150,6 +180,11 @@
   .referrals h2 { margin: 12px 0 8px; }
   .referrals p { max-width: 740px; }
   .referral-details { display: grid; gap: 12px; }
+  form { display: grid; gap: 10px; }
+  small { color: var(--ink-muted); font-size: 0.75rem; }
+  summary { color: var(--accent); cursor: pointer; font-size: 0.82rem; }
+  details label { display: block; margin: 12px 0 6px; }
+  details input { width: 100%; }
   label { font-size: 0.8rem; }
   .link-row { display: flex; gap: 10px; }
   input { background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); flex: 1; min-width: 0; padding: 10px 12px; }
