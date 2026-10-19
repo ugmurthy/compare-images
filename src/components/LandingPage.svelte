@@ -10,7 +10,7 @@
     <div class="header-inner">
       <a class="wordmark" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={26} /><span>SketchLens</span></a>
       <nav aria-label="Main navigation">
-        <a href="#compare">Compare</a><a href="#measure">Measure</a><a href="/pricing">Pricing</a>
+        <a href="#align">Align</a><a href="#compare">Compare</a><a href="#measure">Measure</a><a href="/pricing">Pricing</a>
       </nav>
       <div class="account-actions">{#if signedIn}<a class="btn primary" href="/">Open workspace <Icon name="next" size={15} /></a>{:else}<a class="btn quiet" href="/signin">Sign in</a><a class="btn primary" href="/signup">Start free <Icon name="next" size={15} /></a>{/if}</div>
     </div>
@@ -19,10 +19,10 @@
   <main id="main">
     <section class="hero wrap" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow">A closer look at your art</p>
+        <p class="eyebrow">Align. Compare. Measure.</p>
         <h1 id="hero-title">See the difference.<br /><span>Measure the details.</span></h1>
         <p class="intro">Bring your reference and sketch into focus. Align your photos, compare the parts that matter, and understand every proportion.</p>
-        <div class="hero-actions"><a class="btn primary" href="/signup">Start your free trial <Icon name="next" size={18} /></a><a class="watch-link" href="#compare">See how it works <span aria-hidden="true">↓</span></a></div>
+        <div class="hero-actions"><a class="btn primary" href={signedIn ? '/' : '/signup'}>{signedIn ? 'Open your workspace' : 'Start your free trial'} <Icon name="next" size={18} /></a><a class="watch-link" href="#align">See how it works <span aria-hidden="true">↓</span></a></div>
         <p class="trial-note"><Icon name="check" size={16} />3 months. All features. No credit card needed.</p>
       </div>
       <div class="hero-demo">
@@ -38,16 +38,23 @@
       <span><Icon name="measure" />Compare shapes. Check proportions.</span>
     </div>
 
-    <section id="compare" class="feature wrap" aria-labelledby="compare-title">
-      <figure class="alignment-demo">
-        <div class="frame-caption"><strong>Reference & sketch</strong><span class="chip ok"><Icon name="check" size={13} />Manually aligned</span></div>
-        <img src="/demos/manual-aligned.jpg" width={1280} height={484} loading="lazy" alt="Saved manual alignment of a portrait reference and a pencil sketch, with matching eye, nose and lip regions." />
-        <figcaption>A saved manual alignment from the recorded portrait study.</figcaption>
-      </figure>
+    <section id="align" class="feature wrap" aria-labelledby="align-title">
+      <DemoLoop name="manual-align" label="four-point manual alignment demo" width={1280} height={842} />
       <div class="feature-copy">
-        <p class="eyebrow">01 / Compare</p>
+        <p class="eyebrow">01 / Align</p>
+        <h2 id="align-title">Compare your drawing.<br />Not your camera angle.</h2>
+        <p>A photo taken at an angle can make a faithful sketch look out of proportion. Manual alignment brings the photographed page into the reference’s perspective—a powerful starting point for an accurate visual comparison.</p>
+        <ol class="alignment-steps"><li><strong>1</strong><span>Place at least <b>4 points on the reference</b> and match each to the same location on your sketch photo.</span></li><li><strong>2</strong><span>Spread points across the page, not along one line. Use the 3× magnifier, drag, or arrow keys to refine them.</span></li><li><strong>3</strong><span>Apply alignment to correct the photo’s perspective. Then compare the shapes and proportions that matter.</span></li></ol>
+        <p class="measurement-note">Best on a flat page. Alignment depends on your point placement; it doesn’t correct drawing errors or a curved sheet.</p>
+      </div>
+    </section>
+
+    <section id="compare" class="feature wrap" aria-labelledby="compare-title">
+      <DemoLoop name="compare-parts" label="aligned detail comparison demo" width={1280} height={538} />
+      <div class="feature-copy">
+        <p class="eyebrow">02 / Compare</p>
         <h2 id="compare-title">Same perspective.<br />A clearer comparison.</h2>
-        <p>Line up your reference and sketch with matching anchor points. Then look beyond the whole image: compare an eye, a nose, a mouth—or any region you choose.</p>
+        <p>Once aligned, look beyond the whole image: compare an eye, a nose, a mouth—or any region you choose. Study corresponding details side by side or blend them in an overlay to see where lines diverge.</p>
         <ul><li><Icon name="manual" />Manual alignment puts you in control</li><li><Icon name="parts" />Compare matching parts side by side</li><li><Icon name="overlay" />Switch to an overlay to spot differences</li></ul>
         <a class="text-link" href="/signup">Take a closer look <Icon name="next" size={16} /></a>
       </div>
@@ -55,7 +62,7 @@
 
     <section id="measure" class="feature measure-feature wrap" aria-labelledby="measure-title">
       <div class="feature-copy">
-        <p class="eyebrow">02 / Measure</p>
+        <p class="eyebrow">03 / Measure</p>
         <h2 id="measure-title">Less guesswork.<br />More understanding.</h2>
         <p>Is that feature too wide? Is the spacing too tall? Set a reference scale once, then check horizontal and vertical spans as you move across the image.</p>
         <ul><li><Icon name="horizontal" />Check feature width and spacing</li><li><Icon name="vertical" />Check feature height and vertical distance</li><li><Icon name="measure" />See proportions and calibrated units live</li></ul>
@@ -80,9 +87,9 @@
 
     <section class="closing wrap" aria-labelledby="closing-title">
       <p class="eyebrow">Your next study starts here</p>
-      <h2 id="closing-title">Compare. Measure.<br />See your work with fresh eyes.</h2>
+      <h2 id="closing-title">Align. Compare. Measure.<br />See your work with fresh eyes.</h2>
       <p>Everything you need for a closer look, free for 3 months.</p>
-      <a class="btn primary" href="/signup">Create your free account <Icon name="next" size={18} /></a>
+      <a class="btn primary" href={signedIn ? '/' : '/signup'}>{signedIn ? 'Return to your workspace' : 'Create your free account'} <Icon name="next" size={18} /></a>
       <p class="trial-note">No credit card needed. Already have an account? <a href="/signin">Sign in</a></p>
     </section>
   </main>
@@ -125,10 +132,9 @@
   li { align-items: center; display: flex; font-size: 0.85rem; gap: 12px; }
   li :global(svg) { color: var(--accent); }
   .text-link { align-items: center; color: var(--accent); display: inline-flex; font-size: 0.88rem; font-weight: 500; gap: 10px; margin-top: 28px; text-decoration: none; }
-  .alignment-demo { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden; }
-  .alignment-demo img { display: block; height: auto; width: 100%; }
-  .alignment-demo .frame-caption { justify-content: space-between; padding: 12px 16px; }
-  .alignment-demo figcaption { color: var(--ink-muted); font-size: 0.72rem; padding: 14px 16px; }
+  .alignment-steps { display: grid; gap: 16px; list-style: none; margin-top: 24px; }
+  .alignment-steps li { align-items: flex-start; line-height: 1.6; }
+  .alignment-steps strong { align-items: center; background: var(--accent-tint); border-radius: 50%; color: var(--accent); display: flex; flex: none; height: 28px; justify-content: center; width: 28px; }
   .feature-copy > .measurement-note { font-size: 0.72rem !important; }
   .detail-section { border-top: 1px solid var(--hairline); padding-block: 64px 88px; }
   .section-heading { margin-bottom: 36px; text-align: center; }
@@ -191,6 +197,5 @@
     .wordmark { font-size: 0.8rem; }
     .wordmark :global(svg) { width: 20px; }
     .account-actions .btn { padding-inline: 8px; }
-    .alignment-demo .frame-caption { flex-wrap: wrap; gap: 8px; }
   }
 </style>

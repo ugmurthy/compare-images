@@ -50,7 +50,9 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Public landing page
 
-Signed-out visitors at `/` see a Compare/Measure feature showcase. `/signup`
+Signed-out visitors at `/` see an Align/Compare/Measure feature showcase. `/welcome`
+always shows that landing page, including when signed in; all SketchLens brand
+links lead there. `/signup`
 and `/signin` open the existing authentication forms; valid `/?ref=…` links
 still open referred signup directly. Signed-in visitors continue into the app.
 
@@ -58,7 +60,13 @@ The silent H.264 loops and JPEG posters in `public/demos/` are cropped from the
 provided **CleanShot 2026-10-09 at 5.08.15 PM** recording, with account details,
 project names and filenames excluded. Source segments: compare parts 6.25–9.65s,
 measurement 23–31.5s, line colors 24.4–33.4s, magnifier 23.5–27.3s. The manual
-alignment still is from 4.2s: the source shows the saved result, not anchor placement.
+alignment loop comes from **CleanShot 2026-10-19 at 4.23.19 PM**, showing four
+reference points, four corresponding sketch-photo points, and the aligned result.
+It uses the full 15.97s recording with a 2s final-frame hold, cropped with
+`crop=2216:1458:0:260,scale=1280:-2,fps=24` to exclude the account bar. The poster
+is from 6s. Demonstration filenames remain visible in some frames; no account
+details are included. Alignment corrects a flat page's perspective, not drawing
+errors or non-planar distortion.
 Loops use 24 fps, H.264 CRF 25, `yuv420p`, no audio and fast-start metadata.
 Only visible demos autoplay; they pause offscreen and in background tabs, respect
 reduced motion, and have explicit play/pause controls. The original recording is
