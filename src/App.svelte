@@ -730,8 +730,8 @@
 
 {#if !suspended}
 <header class="app-bar">
-  <a class="brand" href="/welcome" aria-label="SketchLens home">
-    <span class="brand-mark" aria-hidden="true"><Icon name="logo" size={20} /></span>
+  <a class="brand app-wordmark" href="/welcome" aria-label="SketchLens home">
+    <Icon name="logo" size={44} />
     <h1>SketchLens</h1>
   </a>
   <nav class="primary-nav segmented" aria-label="Main">
@@ -1012,16 +1012,13 @@
     border-bottom: 1px solid var(--hairline);
     display: grid;
     gap: 12px;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
     min-height: var(--app-bar-height);
     padding: 10px max(24px, env(safe-area-inset-right)) 10px max(24px, env(safe-area-inset-left));
     position: sticky;
     top: 0;
     z-index: 30;
   }
-  .brand { align-items: center; color: var(--ink); display: flex; gap: 10px; min-width: 0; text-decoration: none; }
-  .brand-mark { align-items: center; background: var(--accent); border-radius: 9px; color: var(--on-accent); display: flex; flex: none; height: 32px; justify-content: center; width: 32px; }
-  h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.015em; white-space: nowrap; }
   .primary-nav > button { min-height: 36px; padding: 0 0.9rem; }
   .primary-nav > button[aria-disabled='true'] { opacity: 0.5; }
   .app-status { align-items: center; display: flex; gap: 4px; justify-content: flex-end; }
@@ -1129,10 +1126,11 @@
     .features li { padding: 14px 0; }
   }
   @media (max-width: 719px) {
-    .app-bar { gap: 8px; padding: 8px 12px; }
+    .app-bar { column-gap: 8px; grid-template-columns: 1fr auto; padding: 8px 12px; row-gap: 4px; }
+    .primary-nav { justify-self: end; }
+    .app-status { grid-column: 1 / -1; }
     .primary-nav > button { padding: 0; width: 36px; }
     .runtime-pill { min-width: 28px; padding: 0; }
-    h1 { display: none; }
     .page { padding: 14px 12px 40px; }
     .upload-grid { grid-template-columns: 1fr; gap: 14px; }
     .hero { margin-bottom: 20px; }
@@ -1147,10 +1145,6 @@
     .modal-scrim { align-items: flex-end; padding: 0; }
     .save-dialog { border-radius: var(--radius-lg) var(--radius-lg) 0 0; max-height: calc(100dvh - env(safe-area-inset-top) - 1rem); padding-bottom: env(safe-area-inset-bottom); width: 100%; }
     .save-panel { padding: 22px 18px; }
-  }
-  @media (max-width: 479px) {
-    .brand { display: none; }
-    .app-bar { grid-template-columns: 1fr auto; }
   }
   @media (max-width: 359px) {
     .app-bar { gap: 4px; grid-template-columns: 1fr auto; padding: 8px max(4px, env(safe-area-inset-right)) 8px max(4px, env(safe-area-inset-left)); }

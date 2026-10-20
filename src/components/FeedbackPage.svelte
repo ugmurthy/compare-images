@@ -45,7 +45,7 @@
 </script>
 
 <div class="feedback-page">
-  <header><a class="brand" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={24} />SketchLens</a><button class="btn quiet" disabled={busy} onclick={onBack}><Icon name="back" size={16} />Back to app</button></header>
+  <header><a class="brand app-wordmark" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={44} />SketchLens</a><button class="btn quiet" disabled={busy} onclick={onBack}><Icon name="back" size={16} />Back to app</button></header>
   <main>
     <p class="eyebrow">Help shape SketchLens</p>
     <h1 bind:this={heading} tabindex="-1">Your perspective matters.</h1>
@@ -71,8 +71,7 @@
 
 <style>
   .feedback-page { min-height: 100dvh; }
-  header { align-items: center; border-bottom: 1px solid var(--hairline); display: flex; gap: 16px; justify-content: space-between; padding: 18px 32px; }
-  .brand { align-items: center; color: var(--accent); display: flex; font-weight: 600; gap: 10px; text-decoration: none; }
+  header { align-items: center; border-bottom: 1px solid var(--hairline); display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; min-height: 72px; padding: 12px 32px; }
   main { margin: auto; max-width: 760px; padding: 48px 24px; }
   .eyebrow { color: var(--accent); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
   h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); letter-spacing: -0.04em; margin: 14px 0; }

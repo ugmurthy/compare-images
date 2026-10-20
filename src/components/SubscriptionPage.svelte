@@ -91,7 +91,7 @@
 
 <div class="subscriptions">
   <header>
-    <a class="brand" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={24} />SketchLens</a>
+    <a class="brand app-wordmark" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={44} />SketchLens</a>
     <div class="toolbar"><ThemeSelect />
       {#if onFeedback}<button class="btn quiet" onclick={onFeedback}>Feedback & requests</button>{/if}
       {#if !member || active}<button class="btn quiet" disabled={!!busy} onclick={onBack}>{member ? 'Back to app' : 'Back to sign in'}</button>{/if}
@@ -158,8 +158,7 @@
 
 <style>
   .subscriptions { min-height: 100dvh; }
-  header { align-items: center; border-bottom: 1px solid var(--hairline); display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; padding: 16px 32px; }
-  .brand { align-items: center; color: var(--accent); display: flex; font-weight: 600; gap: 10px; text-decoration: none; }
+  header { align-items: center; border-bottom: 1px solid var(--hairline); display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; min-height: 72px; padding: 12px 32px; }
   main { margin: auto; max-width: 1120px; padding: 48px 32px; }
   .intro { margin-bottom: 32px; text-align: center; }
   h1 { font-size: clamp(1.9rem, 5vw, 2.8rem); margin: 14px 0 10px; }

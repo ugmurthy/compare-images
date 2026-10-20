@@ -31,7 +31,7 @@
   --radius: 12px;
   --radius-lg: 16px;
   --ease: cubic-bezier(0.2, 0, 0, 1);
-  --app-bar-height: 64px;
+  --app-bar-height: 72px;
 
   /* Aliases used by existing components. */
   --bg: var(--paper);
@@ -88,6 +88,15 @@ body {
 
 h1, h2, h3 { font-family: inherit; font-weight: 600; letter-spacing: -0.01em; }
 button, input, select, textarea { color: inherit; font: inherit; }
+
+.app-wordmark { align-items: center; color: var(--ink); display: inline-flex; flex: none; font-size: 1.9rem; font-weight: 600; gap: 12px; letter-spacing: -0.04em; line-height: 1.1; text-decoration: none; white-space: nowrap; }
+.app-wordmark svg { color: var(--accent); height: 44px; width: 44px; }
+.app-wordmark h1 { font: inherit; letter-spacing: inherit; }
+@media (max-width: 719px) {
+  :root { --app-bar-height: 104px; }
+  .app-wordmark { font-size: 1.4rem; gap: 8px; }
+  .app-wordmark svg { height: 34px; width: 34px; }
+}
 button, select { touch-action: manipulation; }
 button:disabled { cursor: not-allowed; }
 

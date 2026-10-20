@@ -19,8 +19,9 @@
   <main id="main">
     <section class="hero wrap" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow">Align. Compare. Measure.</p>
-        <h1 id="hero-title">See the difference.<br /><span>Measure the details.</span></h1>
+        <h1 id="hero-title"><a class="hero-brand" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={80} /><span>SketchLens</span></a></h1>
+        <p class="hero-tagline">Align. Compare. Measure.</p>
+        <h2 class="hero-benefit">See the difference.<br />Measure the details.</h2>
         <p class="intro">Bring your reference and sketch into focus. Align your photos, compare the parts that matter, and understand every proportion.</p>
         <div class="hero-actions"><a class="btn primary" href={signedIn ? '/' : '/signup'}>{signedIn ? 'Open your workspace' : 'Start your free trial'} <Icon name="next" size={18} /></a><a class="watch-link" href="#align">See how it works <span aria-hidden="true">↓</span></a></div>
         <p class="trial-note"><Icon name="check" size={16} />3 months. All features. No credit card needed.</p>
@@ -108,10 +109,13 @@
   nav a, footer > a:not(.wordmark) { color: var(--ink-muted); font-size: 0.85rem; text-decoration: none; }
   nav a:hover, footer > a:hover { color: var(--accent); }
   .account-actions { display: flex; gap: 8px; }
-  .hero { align-items: center; display: grid; gap: 48px; grid-template-columns: 0.9fr 1.1fr; padding-block: 94px 76px; }
+  .hero { align-items: center; display: grid; gap: 48px; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); padding-block: 64px 64px; }
   .eyebrow { color: var(--accent); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em; margin-bottom: 20px; text-transform: uppercase; }
-  h1 { font-size: clamp(2.5rem, 4.15vw, 3.6rem); letter-spacing: -0.055em; line-height: 1.09; }
-  h1 span { color: var(--accent); }
+  h1 { font-size: clamp(2.8rem, 5vw, 4.5rem); letter-spacing: -0.055em; line-height: 1.1; }
+  .hero-brand { align-items: center; color: var(--ink); display: inline-flex; gap: 16px; text-decoration: none; white-space: nowrap; }
+  .hero-brand :global(svg) { color: var(--accent); height: 1.15em; width: 1.15em; }
+  .hero-tagline { color: var(--accent); font-size: clamp(1.1rem, 1.8vw, 1.5rem); font-weight: 600; letter-spacing: -0.025em; margin-top: 12px; }
+  .hero-benefit { font-size: clamp(1.85rem, 2.6vw, 2.3rem); letter-spacing: -0.045em; line-height: 1.16; margin-top: 28px; }
   .intro { color: var(--ink-muted); font-size: 1.08rem; line-height: 1.7; margin-top: 24px; max-width: 440px; }
   .hero-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 24px; margin-top: 32px; }
   .hero-actions .btn, .closing .btn { min-height: 48px; padding-inline: 20px; }
@@ -158,12 +162,14 @@
   footer .wordmark { font-size: 0.9rem; }
   .skip-link { background: var(--surface); color: var(--accent); left: 16px; padding: 12px; position: fixed; top: -80px; z-index: 20; }
   .skip-link:focus { top: 12px; }
-  a:not(.btn):hover { text-decoration: underline; }
+  a:not(.btn, .hero-brand):hover { text-decoration: underline; }
   @media (max-width: 1000px) {
     .wrap, .header-inner { width: calc(100% - 48px); }
     .header-inner { gap: 20px; }
     nav { gap: 18px; }
     .hero { gap: 28px; padding-block: 64px; }
+    h1 { font-size: clamp(2.4rem, 4.8vw, 3rem); }
+    .hero-brand { gap: 10px; }
     .feature { gap: 40px; }
     .trust { gap: 16px; }
   }
@@ -176,7 +182,8 @@
     .account-actions .primary :global(svg) { display: none; }
     nav { border-top: 1px solid var(--hairline); justify-content: center; margin-top: 8px; order: 3; padding-top: 10px; width: 100%; }
     .hero { gap: 36px; grid-template-columns: 1fr; padding-block: 48px 40px; }
-    h1 { font-size: clamp(2.3rem, 8vw, 3.5rem); }
+    h1 { font-size: clamp(2.3rem, 9vw, 3.5rem); }
+    .hero-tagline { font-size: 1.2rem; }
     .intro { font-size: 1rem; }
     .hero-actions { gap: 20px; margin-top: 26px; }
     .trial-note { font-size: 0.7rem; }

@@ -145,7 +145,8 @@ async function capture(state: string) {
     await browser('set', 'viewport', `${width}`, `${height}`, '2');
     await browser('eval', 'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
     await expectDOM('document.documentElement.scrollWidth <= innerWidth', `${state}: no horizontal overflow at ${width}px`);
-    await expectDOM('(() => { if (!document.querySelector(".app-bar")) return true; const nav = document.querySelector(".primary-nav").getBoundingClientRect(); const tools = document.querySelector(".app-status").getBoundingClientRect(); const brand = document.querySelector(".brand").getBoundingClientRect(); return nav.right <= tools.left && (!brand.width || brand.right <= nav.left); })()', `${state}: header groups do not overlap at ${width}px`);
+    await expectDOM('(() => { const header = document.querySelector(".app-bar"); if (!header) return true; const groups = [...header.children].map(el => el.getBoundingClientRect()); return groups.every((a, i) => groups.slice(i + 1).every(b => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top)); })()', `${state}: header groups do not overlap at ${width}px`);
+    await expectDOM('(() => { const brand = document.querySelector(".app-wordmark, .hero-brand"); if (!brand) return true; const text = [...brand.childNodes].find(node => node.textContent.includes("SketchLens")); const range = document.createRange(); range.selectNodeContents(text); const box = range.getBoundingClientRect(); return box.width > 0 && box.left >= 0 && box.right <= innerWidth && brand.getAttribute("href") === "/welcome"; })()', `${state}: SketchLens name stays visible and links home at ${width}px`);
     if (artifacts) await browser('screenshot', '--full', `${artifacts}/${state}-${name}.png`);
   }
 }
