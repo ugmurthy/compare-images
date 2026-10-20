@@ -97,7 +97,7 @@
 <section class="compare-section">
   {#if viewMode === 'side-by-side' || viewMode === 'stacked'}
     <div class="view side-by-side" class:stacked={viewMode === 'stacked'}>
-      <figure class="frame">
+      <figure class="frame reference-frame">
         <figcaption class="frame-caption">
           <span class="swatch reference" aria-hidden="true"></span><strong>Reference</strong>
           <span class="file" title={referenceName}>{referenceName}</span>
@@ -105,13 +105,14 @@
         </figcaption>
         <div class="canvas-wrap">
           {#if alignResult && oncompareparts}
-            <RegionSelector image={refImg} bind:region {savedRegions} />
+            <RegionSelector image={refImg} bind:region {savedRegions}
+              preserveAspectRatio={viewMode === 'side-by-side' ? 'xMaxYMid meet' : 'xMidYMid meet'} />
           {:else}
             <canvas bind:this={refCanvas} aria-label="Reference image"></canvas>
           {/if}
         </div>
       </figure>
-      <figure class="frame">
+      <figure class="frame source-frame">
         <figcaption class="frame-caption">
           <span class="swatch source" aria-hidden="true"></span><strong>Source</strong>
           <span class="file" title={sourceName}>{sourceName}</span>
@@ -139,6 +140,11 @@
 <style>
   .view { display: grid; gap: 16px; }
   .side-by-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .side-by-side:not(.stacked) { gap: 4px; }
+  .side-by-side:not(.stacked) .canvas-wrap { padding: 4px; }
+  .side-by-side:not(.stacked) .reference-frame .frame-caption { justify-content: flex-end; }
+  .side-by-side:not(.stacked) .reference-frame canvas { object-position: right center; }
+  .side-by-side:not(.stacked) .source-frame canvas { object-position: left center; }
   .side-by-side.stacked { grid-template-columns: 1fr; margin: 0 auto; max-width: 980px; width: 100%; }
   figure { margin: 0; }
   .canvas-wrap { background: var(--canvas-bg); padding: 8px; }

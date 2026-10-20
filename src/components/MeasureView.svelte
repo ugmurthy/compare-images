@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import type { Point } from '../lib/manualAnchors';
   import type { Region } from '../lib/region';
   import { measure, validCalibration, type Calibration } from '../lib/measurement';
@@ -55,6 +56,8 @@
   let activeImage = $derived(!calibrating && side === 'source' && sourceImage ? sourceImage : image);
   let otherImage = $derived(side === 'source' ? image : sourceImage);
   let showBoth = $derived(viewBoth && !calibrating && !!sourceImage);
+  const wide = new MediaQuery('(min-width: 720px)');
+  let seamAligned = $derived(showBoth && wide.current);
   let otherSampler = $derived(otherImage ? createSampler(otherImage) : null);
   let bounds = $derived(calibrating || !region
     ? { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight } : region);
@@ -109,6 +112,7 @@
     const observer = new ResizeObserver(([entry]) => {
       counterpartWidth = entry.contentRect.width;
       counterpartHeight = entry.contentRect.height;
+      syncScroll(surface.parentElement!);
     });
     observer.observe(counterpart);
     return () => observer.disconnect();
@@ -150,9 +154,33 @@
     cursor = null;
     nudged = null;
     await tick();
-    const viewport = surface.parentElement!;
-    viewport.scrollLeft = (viewport.scrollWidth - viewport.clientWidth) / 2;
-    viewport.scrollTop = (viewport.scrollHeight - viewport.clientHeight) / 2;
+    for (const svg of [surface, counterpart]) {
+      if (svg) centerOn(svg, { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
+    }
+  }
+
+  function centerOn(svg: SVGSVGElement, point: Point) {
+    const viewport = svg.parentElement!;
+    const rect = viewport.getBoundingClientRect();
+    const screen = new DOMPoint(point.x, point.y).matrixTransform(svg.getScreenCTM()!);
+    const dx = screen.x - rect.left - viewport.clientWidth / 2;
+    const dy = screen.y - rect.top - viewport.clientHeight / 2;
+    // Ignore subpixel rounding differences to avoid scroll-event feedback between panes.
+    if (Math.abs(dx) > 1) viewport.scrollLeft += dx;
+    if (Math.abs(dy) > 1) viewport.scrollTop += dy;
+  }
+
+  function syncScroll(viewport: HTMLElement) {
+    if (!counterpart) return;
+    const svg = viewport === surface.parentElement ? surface : counterpart;
+    const other = svg === surface ? counterpart : surface;
+    const rect = viewport.getBoundingClientRect();
+    const matrix = svg.getScreenCTM()!;
+    const point = new DOMPoint(rect.left + viewport.clientWidth / 2, rect.top + viewport.clientHeight / 2).matrixTransform(matrix.inverse());
+    // Match image coordinates, not scrollbar fractions: the panes letterbox toward opposite edges.
+    if (bounds.width * matrix.a <= viewport.clientWidth) point.x = bounds.x + bounds.width / 2;
+    if (bounds.height * matrix.d <= viewport.clientHeight) point.y = bounds.y + bounds.height / 2;
+    centerOn(other, point);
   }
 
   function clearPoints() {
@@ -337,11 +365,12 @@
         <label class="zoom">Zoom <select bind:value={zoom} onchange={centerZoom}><option value={1}>Fit</option><option value={2}>2×</option><option value={4}>4×</option></select></label>
       </div>
       <div class="image-pair" class:paired={showBoth}>
-      <div class="measurement-surface">
+      <div class="measurement-surface" class:source={side === 'source' && !calibrating}>
       {#if showBoth}<div class="image-label"><span class="swatch {side}" aria-hidden="true"></span>{side === 'source' ? 'Aligned source' : 'Reference'} · Measure here</div>{/if}
-      <div class="image-scroll" onscroll={() => cursor = null}>
+      <div class="image-scroll" onscroll={(event) => { cursor = null; syncScroll(event.currentTarget); }}>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
         <svg bind:this={surface} viewBox="{bounds.x} {bounds.y} {bounds.width} {bounds.height}"
+          preserveAspectRatio={seamAligned ? side === 'reference' ? 'xMaxYMid meet' : 'xMinYMid meet' : 'xMidYMid meet'}
           style:width="{zoom * 100}%" style:height="calc(var(--image-height) * {zoom})" style:cursor={panning && zoom > 1 ? 'grab' : 'none'} role="application" tabindex="0"
           aria-label={calibrating
             ? 'Calibration image. Click two points. Arrow keys move the cursor, Enter places a point. Tab to endpoints and use arrows to refine. Shift moves ten pixels. M toggles the magnifier. Escape clears.'
@@ -397,10 +426,12 @@
       </div>
       </div>
       {#if showBoth && otherImage}
-        <div class="corresponding-surface">
+        <div class="corresponding-surface" class:source={side === 'reference'}>
           <div class="image-label"><span class="swatch {side === 'source' ? 'reference' : 'source'}" aria-hidden="true"></span>{side === 'source' ? 'Reference' : 'Aligned source'} · Corresponding points</div>
-          <div class="image-scroll">
+          <div class="image-scroll" onscroll={(event) => { cursor = null; syncScroll(event.currentTarget); }}>
             <svg bind:this={counterpart} class="corresponding-image" viewBox="{bounds.x} {bounds.y} {bounds.width} {bounds.height}"
+              preserveAspectRatio={seamAligned ? side === 'source' ? 'xMaxYMid meet' : 'xMinYMid meet' : 'xMidYMid meet'}
+              style:width="{zoom * 100}%" style:height="calc(var(--image-height) * {zoom})"
               role="img" aria-label={`Corresponding measurement on ${side === 'source' ? 'reference' : 'aligned source'}${region ? ' part' : ''}`}>
               <defs>
                 <clipPath id="{guideMask}-other-clip"><rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} /></clipPath>
@@ -521,11 +552,11 @@
   .measure-layout { align-items: start; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 320px; }
   .image-panel { min-width: 0; }
   .image-pair { display: grid; }
-  .image-pair.paired { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .image-pair.paired { gap: 4px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .measurement-surface, .corresponding-surface { min-width: 0; }
-  .corresponding-surface { border-left: 1px solid var(--hairline); }
+  .paired > .source { order: 1; }
   .image-label { align-items: center; background: var(--surface-2); color: var(--ink-muted); display: flex; font-size: 0.75rem; gap: 6px; min-height: 32px; padding: 6px 12px; }
-  .corresponding-image { height: var(--image-height); width: 100%; }
+  .corresponding-image { touch-action: auto; }
   .image-tools { align-items: center; border-bottom: 1px solid var(--hairline); display: flex; flex-wrap: wrap; gap: 8px 10px; min-height: 52px; padding: 6px 8px 6px 12px; }
   .segmented button { gap: 6px; }
   .swatch { border-radius: 3px; height: 10px; width: 10px; }
@@ -580,6 +611,9 @@
   .absolute { color: var(--accent); font-size: 0.9rem; font-weight: 600; overflow-wrap: anywhere; }
   .error { color: var(--danger); font-size: 0.85rem; }
   .notice { align-items: center; background: var(--ok-tint); border-radius: 10px; color: var(--ok); display: flex; font-size: 0.82rem; gap: 6px; padding: 8px 10px; }
+  @media (min-width: 720px) {
+    .paired > :not(.source) .image-label { justify-content: flex-end; }
+  }
   @media (max-width: 899px) {
     .measure-layout { grid-template-columns: 1fr; }
     .measure-panel { position: static; }
@@ -588,7 +622,6 @@
   }
   @media (max-width: 719px) {
     .image-pair.paired { grid-template-columns: 1fr; }
-    .corresponding-surface { border-left: 0; border-top: 1px solid var(--hairline); }
     .image-scroll { max-height: 54vh; min-height: 240px; }
     svg { --image-height: 46vh; }
     .measure-head p { display: none; }

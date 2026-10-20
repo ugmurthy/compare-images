@@ -6,10 +6,11 @@
   import Crosshair from './Crosshair.svelte';
   import Magnifier from './Magnifier.svelte';
 
-  let { image, region = $bindable(null), savedRegions = [] }: {
+  let { image, region = $bindable(null), savedRegions = [], preserveAspectRatio = 'xMidYMid meet' }: {
     image: HTMLImageElement;
     region: Region | null;
     savedRegions?: Region[];
+    preserveAspectRatio?: string;
   } = $props();
 
   let surface: SVGSVGElement = $state()!;
@@ -150,6 +151,7 @@
 <svg
   bind:this={surface}
   viewBox="0 0 {image.naturalWidth} {image.naturalHeight}"
+  {preserveAspectRatio}
   role="application"
   tabindex="0"
   aria-label="Select reference rectangle. Drag across the image, or use arrow keys to move, Enter to mark each corner, Shift for ten-pixel steps, and Escape to clear."

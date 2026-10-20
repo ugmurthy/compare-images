@@ -248,22 +248,25 @@ export async function testMeasurement(): Promise<string> {
       const zoom = target.querySelector('select')!;
       zoom.value = value;
       zoom.dispatchEvent(new Event('change', { bubbles: true }));
-      const viewport = target.querySelector('.image-scroll')!;
       await waitFor(() => {
-        const s = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
-        const center = new DOMPoint(centerX, centerY).matrixTransform(s.getScreenCTM()!);
-        const rect = viewport.getBoundingClientRect();
-        return Math.abs(center.x - rect.left - viewport.clientWidth / 2) < 1
-          && Math.abs(center.y - rect.top - viewport.clientHeight / 2) < 1;
+        return [...target.querySelectorAll<SVGSVGElement>('svg[role="application"], .corresponding-image')].every((s) => {
+          const viewport = s.parentElement!;
+          const matrix = s.getScreenCTM()!;
+          const center = new DOMPoint(centerX, centerY).matrixTransform(matrix);
+          const rect = viewport.getBoundingClientRect();
+          return (s.viewBox.baseVal.width * matrix.a < viewport.clientWidth || Math.abs(center.x - rect.left - viewport.clientWidth / 2) < 1)
+            && (s.viewBox.baseVal.height * matrix.d < viewport.clientHeight || Math.abs(center.y - rect.top - viewport.clientHeight / 2) < 1);
+        });
       });
-      check(viewport.scrollLeft > 0 && viewport.scrollTop > 0, `${value}× zoom centers both scroll axes`);
+      const other = target.querySelector<SVGSVGElement>('.corresponding-image');
+      if (other) check(Math.abs(other.getScreenCTM()!.a - surface.getScreenCTM()!.a) < 0.001, `${value}× zoom applies equally to both images`);
     }
     await checkZoom('2', 300, 250);
     await checkZoom('4', 300, 250);
     await hover(430, 255);
     check(target.querySelectorAll('.results strong')[0].textContent === '25%'
       && target.querySelectorAll('.results strong')[1].textContent === '20%', 'Zoom does not change image-space live measurements');
-    checkCorrespondence('Zoomed reference to fit source');
+    checkCorrespondence('Zoomed reference to zoomed source');
     surface.dispatchEvent(new PointerEvent('pointerleave'));
     await tick();
     check(!target.querySelector('path[stroke-dasharray]') && !target.querySelector('.results')!.textContent!.includes('%')
@@ -329,6 +332,8 @@ export async function testMeasurement(): Promise<string> {
     await place(150, 200);
     await hover(650, 350);
     checkCorrespondence('Whole reference to aligned source');
+    await checkZoom('2', 400, 300);
+    await checkZoom('4', 400, 300);
     target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.click();
     await tick();
     target.querySelector<HTMLButtonElement>('[aria-label="Redo calibration"]')!.click();
@@ -392,12 +397,50 @@ export async function testMeasurement(): Promise<string> {
     check(target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.getAttribute('aria-pressed') === 'true', 'Saving a replacement scale returns to source measurement');
     check(replaced?.points[0].x === 100 && replaced.points[1].x === 500, 'Source-triggered recalibration replaces the single reference calibration');
     await unmount(component);
+    // A tall crop exposes horizontal letterboxing; equal scrollbar fractions would show different image areas.
+    component = mount(MeasureView, { target, props: { image, file, aligned, region: { x: 100, y: 150, width: 100, height: 400 }, onback: () => {} } });
+    await waitFor(() => !!target.querySelector('.results') && !!target.querySelector('.corresponding-image'));
+    surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
+    for (const side of ['reference', 'source']) {
+      target.querySelector<HTMLButtonElement>(`[aria-label="Measure ${side}"]`)!.click();
+      await tick();
+      const other = target.querySelector<SVGSVGElement>('.corresponding-image')!;
+      const reference = side === 'reference' ? surface : other;
+      const source = side === 'source' ? surface : other;
+      const refRect = reference.getBoundingClientRect();
+      const srcRect = source.getBoundingClientRect();
+      if (innerWidth >= 720) {
+        check(refRect.left < srcRect.left, 'Reference stays on the left when measuring either image');
+        check(Math.abs(new DOMPoint(200, 350).matrixTransform(reference.getScreenCTM()!).x - refRect.right) < 1
+          && Math.abs(new DOMPoint(100, 350).matrixTransform(source.getScreenCTM()!).x - srcRect.left) < 1, 'Reference pixels are right-justified and source pixels left-justified toward the seam');
+      } else check(refRect.top < srcRect.top, 'Narrow measurement keeps reference above source when either is selected');
+      const fitScale = surface.getScreenCTM()!.a;
+      await checkZoom('2', 150, 350);
+      check(Math.abs(surface.getScreenCTM()!.a - fitScale * 2) < 0.001, '2× doubles the image scale');
+      await checkZoom('4', 150, 350);
+      check(Math.abs(surface.getScreenCTM()!.a - fitScale * 4) < 0.001, '4× quadruples the image scale');
+      for (const s of [surface, other]) {
+        const viewport = s.parentElement!;
+        viewport.scrollTop += 43;
+        if (100 * s.getScreenCTM()!.a > viewport.clientWidth) viewport.scrollLeft += 17;
+        await waitFor(() => {
+          const centers = [surface, other].map((svg) => {
+            const v = svg.parentElement!;
+            const r = v.getBoundingClientRect();
+            return new DOMPoint(r.left + v.clientWidth / 2, r.top + v.clientHeight / 2).matrixTransform(svg.getScreenCTM()!.inverse());
+          });
+          return Math.abs(centers[0].y - centers[1].y) < 1
+            && (100 * s.getScreenCTM()!.a <= viewport.clientWidth || Math.abs(centers[0].x - centers[1].x) < 1);
+        });
+      }
+    }
+    await unmount(component);
     component = mount(MeasureView, { target, props: { image, file, hasSource: true, onback: () => {} } });
     await waitFor(() => !!target.querySelector('.results'));
     check(target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.disabled
       && target.textContent!.includes('Align the source in Compare'), 'Unaligned source measurements require alignment rather than using an unrelated pixel scale');
     check(!target.querySelector('[aria-label="View both images"]') && !target.querySelector('.corresponding-image'), 'Without alignment there is no misleading corresponding-image toggle or preview');
-    return 'PASS: bidirectional corresponding points and lines for whole images and parts, default-on toggle, mirrored Shift/color/zoom behavior, calibration and unaligned-source exclusions; shared reference calibration, source pixels/magnifier, switching, keyboard, persistence, and invalid-size checks';
+    return 'PASS: shared Fit/2×/4× zoom for whole images and parts, bidirectional image-coordinate scrolling, reference/source seam justification and stable order; corresponding points/lines, toggle, Shift/colors, calibration, keyboard, persistence, and invalid-size checks';
   } finally {
     if (component) await unmount(component);
     target.remove();
