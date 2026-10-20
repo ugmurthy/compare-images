@@ -34,6 +34,10 @@
   let zoom = $state(1);
   let panning = $state(false);
   let shiftHeld = $state(false);
+  let viewBoth = $state(true);
+  let counterpart: SVGSVGElement | undefined = $state();
+  let counterpartWidth = $state(1);
+  let counterpartHeight = $state(1);
   let lineColor = $state('#3050d0');
   const lineColors: Record<string, string> = { w: '#ffffff', r: '#ff0000', y: '#ffff00', b: '#3050d0', k: '#000000' };
   let hideOverlays = $derived(shiftHeld && !calibrating);
@@ -49,9 +53,13 @@
   let cursorShades = $state<CrosshairShades>(DEFAULT_SHADES);
   const guideMask = $props.id();
   let activeImage = $derived(!calibrating && side === 'source' && sourceImage ? sourceImage : image);
+  let otherImage = $derived(side === 'source' ? image : sourceImage);
+  let showBoth = $derived(viewBoth && !calibrating && !!sourceImage);
+  let otherSampler = $derived(otherImage ? createSampler(otherImage) : null);
   let bounds = $derived(calibrating || !region
     ? { x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight } : region);
   let scale = $derived(Math.min(surfaceWidth / bounds.width, surfaceHeight / bounds.height));
+  let counterpartScale = $derived(Math.min(counterpartWidth / bounds.width, counterpartHeight / bounds.height));
   let guidePoints = $derived<[Point, Point] | null>(calibrating
     ? points.length === 2 ? [points[0], points[1]] : null
     : points.length === 1 && cursor ? [points[0], cursor] : null);
@@ -95,6 +103,16 @@
   });
 
   $effect(() => { sampler = createSampler(activeImage); });
+
+  $effect(() => {
+    if (!counterpart) return;
+    const observer = new ResizeObserver(([entry]) => {
+      counterpartWidth = entry.contentRect.width;
+      counterpartHeight = entry.contentRect.height;
+    });
+    observer.observe(counterpart);
+    return () => observer.disconnect();
+  });
 
   onMount(() => {
     const observer = new ResizeObserver(([entry]) => {
@@ -310,9 +328,17 @@
           {:else}{points.length === 0 ? 'Click to anchor Point 1' : 'Move to measure · Click to reanchor · Esc clears'}{/if}
         </span>
         <span class="tool-spacer"></span>
+        {#if !calibrating && sourceImage}
+          <button class="btn icon" aria-label="View both images" aria-pressed={viewBoth}
+            title={viewBoth ? 'Hide corresponding image' : 'Show corresponding image and measurement'}
+            onclick={() => viewBoth = !viewBoth}><Icon name="side-by-side" /></button>
+        {/if}
         {#if zoom > 1}<button class="btn icon" aria-label={panning ? 'Resume measuring' : 'Pan image'} title={panning ? 'Resume measuring' : 'Pan image'} aria-pressed={panning} onclick={() => { panning = !panning; cursor = null; }}><Icon name="pan" /></button>{/if}
         <label class="zoom">Zoom <select bind:value={zoom} onchange={centerZoom}><option value={1}>Fit</option><option value={2}>2×</option><option value={4}>4×</option></select></label>
       </div>
+      <div class="image-pair" class:paired={showBoth}>
+      <div class="measurement-surface">
+      {#if showBoth}<div class="image-label"><span class="swatch {side}" aria-hidden="true"></span>{side === 'source' ? 'Aligned source' : 'Reference'} · Measure here</div>{/if}
       <div class="image-scroll" onscroll={() => cursor = null}>
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
         <svg bind:this={surface} viewBox="{bounds.x} {bounds.y} {bounds.width} {bounds.height}"
@@ -368,6 +394,42 @@
             <g class="placement-cursor" transform="translate({cursor.x} {cursor.y}) scale({1 / scale})" pointer-events="none" style:visibility={hideOverlays ? 'hidden' : undefined}><Crosshair shades={cursorShades} /></g>
           {/if}
         </svg>
+      </div>
+      </div>
+      {#if showBoth && otherImage}
+        <div class="corresponding-surface">
+          <div class="image-label"><span class="swatch {side === 'source' ? 'reference' : 'source'}" aria-hidden="true"></span>{side === 'source' ? 'Reference' : 'Aligned source'} · Corresponding points</div>
+          <div class="image-scroll">
+            <svg bind:this={counterpart} class="corresponding-image" viewBox="{bounds.x} {bounds.y} {bounds.width} {bounds.height}"
+              role="img" aria-label={`Corresponding measurement on ${side === 'source' ? 'reference' : 'aligned source'}${region ? ' part' : ''}`}>
+              <defs>
+                <clipPath id="{guideMask}-other-clip"><rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} /></clipPath>
+                <mask id="{guideMask}-other" maskUnits="userSpaceOnUse" x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height}>
+                  <rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} fill="white" />
+                  {#each points as p}<circle cx={p.x} cy={p.y} r={6 / counterpartScale} fill="black" />{/each}
+                  {#if cursor && !hideOverlays}<circle cx={cursor.x} cy={cursor.y} r={6 / counterpartScale} fill="black" />{/if}
+                </mask>
+              </defs>
+              <image href={otherImage.src} width={otherImage.naturalWidth} height={otherImage.naturalHeight} clip-path="url(#{guideMask}-other-clip)" />
+              {#if guidePoints}
+                <g mask="url(#{guideMask}-other)">
+                  <path d="M {guidePoints[0].x} {guidePoints[0].y} H {guidePoints[1].x} V {guidePoints[1].y}" fill="none" stroke={lineColor} stroke-width="1.25" stroke-dasharray="4 4" vector-effect="non-scaling-stroke" />
+                </g>
+              {/if}
+              {#each points as p}
+                <g class="corresponding-anchor" transform="translate({p.x} {p.y}) scale({1 / counterpartScale})">
+                  <Crosshair shades={crosshairShades(otherSampler, p, 1 / counterpartScale)} />
+                </g>
+              {/each}
+              {#if cursor}
+                <g class="corresponding-cursor" transform="translate({cursor.x} {cursor.y}) scale({1 / counterpartScale})" style:visibility={hideOverlays ? 'hidden' : undefined}>
+                  <Crosshair shades={crosshairShades(otherSampler, cursor, 1 / counterpartScale)} />
+                </g>
+              {/if}
+            </svg>
+          </div>
+        </div>
+      {/if}
       </div>
     </div>
     <aside class="measure-panel">
@@ -458,6 +520,12 @@
   .measure-head p { color: var(--ink-muted); font-size: 0.875rem; margin-top: 2px; }
   .measure-layout { align-items: start; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 320px; }
   .image-panel { min-width: 0; }
+  .image-pair { display: grid; }
+  .image-pair.paired { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .measurement-surface, .corresponding-surface { min-width: 0; }
+  .corresponding-surface { border-left: 1px solid var(--hairline); }
+  .image-label { align-items: center; background: var(--surface-2); color: var(--ink-muted); display: flex; font-size: 0.75rem; gap: 6px; min-height: 32px; padding: 6px 12px; }
+  .corresponding-image { height: var(--image-height); width: 100%; }
   .image-tools { align-items: center; border-bottom: 1px solid var(--hairline); display: flex; flex-wrap: wrap; gap: 8px 10px; min-height: 52px; padding: 6px 8px 6px 12px; }
   .segmented button { gap: 6px; }
   .swatch { border-radius: 3px; height: 10px; width: 10px; }
@@ -519,6 +587,8 @@
     svg { --image-height: 52vh; }
   }
   @media (max-width: 719px) {
+    .image-pair.paired { grid-template-columns: 1fr; }
+    .corresponding-surface { border-left: 0; border-top: 1px solid var(--hairline); }
     .image-scroll { max-height: 54vh; min-height: 240px; }
     svg { --image-height: 46vh; }
     .measure-head p { display: none; }

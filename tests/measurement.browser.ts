@@ -59,7 +59,20 @@ export async function testMeasurement(): Promise<string> {
   try {
     component = mount(MeasureView, { target, props: { image, file, aligned, region: { x: 100, y: 150, width: 400, height: 200 }, onback: () => {} } });
     await waitFor(() => !!target.querySelector('.results'));
+    await waitFor(() => !!target.querySelector('.corresponding-image'));
     let surface = target.querySelector<SVGSVGElement>('svg[role="application"]')!;
+    function checkCorrespondence(label: string) {
+      const other = target.querySelector<SVGSVGElement>('.corresponding-image')!;
+      check(other.viewBox.baseVal.x === surface.viewBox.baseVal.x
+        && other.viewBox.baseVal.y === surface.viewBox.baseVal.y
+        && other.viewBox.baseVal.width === surface.viewBox.baseVal.width
+        && other.viewBox.baseVal.height === surface.viewBox.baseVal.height, `${label}: both images show the same full-image or part bounds`);
+      check(other.querySelector('path[stroke-dasharray]')?.getAttribute('d') === surface.querySelector('path[stroke-dasharray]')?.getAttribute('d'), `${label}: both connecting legs use the same image coordinates`);
+      for (const [original, mirrored] of [['[data-endpoint="0"]', '.corresponding-anchor'], ['.placement-cursor', '.corresponding-cursor']]) {
+        check(surface.querySelector(original)!.getAttribute('transform')!.split(' scale')[0]
+          === other.querySelector(mirrored)!.getAttribute('transform')!.split(' scale')[0], `${label}: anchor and moving point correspond exactly`);
+      }
+    }
     async function hover(x: number, y: number, element: Element = surface) {
       const screen = new DOMPoint(x, y).matrixTransform(surface.getScreenCTM()!);
       element.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: screen.x, clientY: screen.y }));
@@ -74,8 +87,20 @@ export async function testMeasurement(): Promise<string> {
     await hover(420, 260);
     check(target.querySelector('.results')!.textContent!.includes('60%') && target.querySelector('.results')!.textContent!.includes('35%'), 'Part measurements use the full-reference pixel spans, not crop dimensions');
     check(target.querySelector('.results')!.textContent!.includes('1.2 cm') && target.querySelector('.results')!.textContent!.includes('1.05 cm'), 'Separate paper sizes produce correct absolute distances');
+    const both = target.querySelector<HTMLButtonElement>('[aria-label="View both images"]')!;
+    check(both.getAttribute('aria-pressed') === 'true', 'Both images are visible by default');
+    checkCorrespondence('Reference part to aligned source part');
+    const mirroredSourceUrl = target.querySelector('.corresponding-image image')!.getAttribute('href');
+    const referenceMeasurement = surface.querySelector('path[stroke-dasharray]')!.getAttribute('d');
+    both.click();
+    await tick();
+    check(!target.querySelector('.corresponding-image') && both.getAttribute('aria-pressed') === 'false'
+      && surface.querySelector('path[stroke-dasharray]')!.getAttribute('d') === referenceMeasurement, 'Toggle hides the corresponding image without changing the measurement');
+    both.click();
+    await waitFor(() => !!target.querySelector('.corresponding-image'));
+    checkCorrespondence('Restored corresponding image');
     check(target.querySelectorAll('[data-endpoint]').length === 1, 'Only Point 1 is anchored, never the moving cursor');
-    check(target.querySelectorAll('path[stroke-dasharray]').length === 1, 'The guide is one dashed stroke, without a second halo stroke');
+    check(surface.querySelectorAll('path[stroke-dasharray]').length === 1, 'The guide is one dashed stroke per image, without a second halo stroke');
     const endpoint = target.querySelector('[data-endpoint="0"]')!;
     const guide = target.querySelector('path[stroke-dasharray]')!;
     const overlays = [...target.querySelectorAll('.placement-cursor, .leg-tag')];
@@ -112,6 +137,8 @@ export async function testMeasurement(): Promise<string> {
     check(await inkNearCursor(), 'Shift extends the rendered guide into the hidden cursor centre instead of leaving a six-pixel cutout');
     check(overlays.every((element) => getComputedStyle(element).visibility === 'hidden')
       && !target.querySelector('.magnifier') && getComputedStyle(guide).visibility === 'visible', 'Shift hides cursor, on-image labels and magnifier but keeps both connecting legs visible even when the anchor has keyboard focus');
+    check(getComputedStyle(target.querySelector('.corresponding-cursor')!).visibility === 'hidden'
+      && getComputedStyle(target.querySelector('.corresponding-image path[stroke-dasharray]')!).visibility === 'visible', 'Shift also hides the mirrored cursor while keeping mirrored connecting lines visible');
     check(getComputedStyle(endpoint.querySelector('.marker')!).visibility === 'visible'
       && positions() === beforeHide && target.querySelector('.results')!.textContent === beforeResults, 'Hiding keeps the fixed anchor, coordinates and sidebar distances unchanged');
     target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', shiftKey: true, bubbles: true }));
@@ -127,6 +154,7 @@ export async function testMeasurement(): Promise<string> {
       await tick();
       check(getComputedStyle(guide).stroke === stroke && positions() === beforeHide
         && target.querySelector('.results')!.textContent === beforeResults, `${name} changes only the connecting line color, not the measurement`);
+      check(getComputedStyle(target.querySelector('.corresponding-image path[stroke-dasharray]')!).stroke === stroke, `${name} also colors the corresponding line`);
     }
     for (const modifier of ['ctrlKey', 'metaKey', 'altKey']) {
       endpoint.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', [modifier]: true, bubbles: true }));
@@ -235,6 +263,7 @@ export async function testMeasurement(): Promise<string> {
     await hover(430, 255);
     check(target.querySelectorAll('.results strong')[0].textContent === '25%'
       && target.querySelectorAll('.results strong')[1].textContent === '20%', 'Zoom does not change image-space live measurements');
+    checkCorrespondence('Zoomed reference to fit source');
     surface.dispatchEvent(new PointerEvent('pointerleave'));
     await tick();
     check(!target.querySelector('path[stroke-dasharray]') && !target.querySelector('.results')!.textContent!.includes('%')
@@ -249,6 +278,7 @@ export async function testMeasurement(): Promise<string> {
     check(surface.viewBox.baseVal.x === 100 && surface.viewBox.baseVal.y === 150
       && surface.viewBox.baseVal.width === 400 && surface.viewBox.baseVal.height === 200, 'Source parts keep reference-space crop coordinates');
     const sourceUrl = surface.querySelector('image')!.getAttribute('href')!;
+    check(mirroredSourceUrl === sourceUrl, 'Reference measurements mirror onto the same aligned source pixels used for source measurement');
     const source = new Image();
     source.src = sourceUrl;
     await source.decode();
@@ -260,12 +290,15 @@ export async function testMeasurement(): Promise<string> {
       && target.querySelectorAll('.results strong')[1].textContent === '35%'
       && target.querySelector('.results')!.textContent!.includes('1.2 cm')
       && target.querySelector('.results')!.textContent!.includes('1.05 cm'), 'Source parts use the same separate reference calibration spans and paper sizes');
+    checkCorrespondence('Aligned source part to reference part');
+    check(target.querySelector('.corresponding-image image')!.getAttribute('href') === image.src, 'Measuring source mirrors onto reference pixels');
     check(target.querySelector('.magnifier image')!.getAttribute('href') === sourceUrl, 'Source magnifier uses source pixels');
     target.querySelector<HTMLButtonElement>('[aria-label="Redo calibration"]')!.click();
     await tick();
     check(surface.querySelector('image')!.getAttribute('href') === image.src
       && surface.viewBox.baseVal.x === 0 && surface.viewBox.baseVal.width === 800
       && surface.viewBox.baseVal.height === 600, 'Recalibrating from a source part always uses the full reference');
+    check(!target.querySelector('.corresponding-image') && !target.querySelector('[aria-label="View both images"]'), 'Calibration stays reference-only');
     target.querySelector<HTMLButtonElement>('[aria-label="Cancel calibration"]')!.click();
     await tick();
     check(surface.querySelector('image')!.getAttribute('href') === sourceUrl, 'Cancel returns to the selected source part');
@@ -290,6 +323,14 @@ export async function testMeasurement(): Promise<string> {
       && target.querySelectorAll('.results strong')[1].textContent === '75%'
       && target.querySelector('.results')!.textContent!.includes('2.5 cm')
       && target.querySelector('.results')!.textContent!.includes('2.25 cm'), 'Whole source measurements share the persisted reference scale, including distances larger than the calibration span');
+    checkCorrespondence('Whole aligned source to reference');
+    target.querySelector<HTMLButtonElement>('[aria-label="Measure reference"]')!.click();
+    await tick();
+    await place(150, 200);
+    await hover(650, 350);
+    checkCorrespondence('Whole reference to aligned source');
+    target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.click();
+    await tick();
     target.querySelector<HTMLButtonElement>('[aria-label="Redo calibration"]')!.click();
     await tick();
     await checkZoom('2', 400, 300);
@@ -355,7 +396,8 @@ export async function testMeasurement(): Promise<string> {
     await waitFor(() => !!target.querySelector('.results'));
     check(target.querySelector<HTMLButtonElement>('[aria-label="Measure source"]')!.disabled
       && target.textContent!.includes('Align the source in Compare'), 'Unaligned source measurements require alignment rather than using an unrelated pixel scale');
-    return 'PASS: shared reference calibration for whole source and source parts, source pixels/magnifier, switching clears anchors, full-reference recalibration from source, replacement scale and alignment prerequisite; existing live measurement, crosshair, keyboard, zoom, persistence, and invalid-size checks';
+    check(!target.querySelector('[aria-label="View both images"]') && !target.querySelector('.corresponding-image'), 'Without alignment there is no misleading corresponding-image toggle or preview');
+    return 'PASS: bidirectional corresponding points and lines for whole images and parts, default-on toggle, mirrored Shift/color/zoom behavior, calibration and unaligned-source exclusions; shared reference calibration, source pixels/magnifier, switching, keyboard, persistence, and invalid-size checks';
   } finally {
     if (component) await unmount(component);
     target.remove();
