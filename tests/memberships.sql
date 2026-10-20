@@ -18,6 +18,7 @@ create table auth.users (
 insert into auth.users (id, email_confirmed_at) values ('00000000-0000-4000-8000-000000000001', now());
 \ir ../supabase/migrations/202610090001_memberships.sql
 \ir ../supabase/migrations/202610190001_referral_email.sql
+\ir ../supabase/migrations/202610190002_feedback.sql
 
 begin;
 set local timezone = 'UTC';
@@ -156,3 +157,63 @@ set local role service_role;
 select public.sketch_reserve_invite('00000000-0000-4000-8000-000000000001');
 rollback;
 \echo PASS: email reservation is service-only, returns own code, supports expired/lifetime members, rejects attempt 11, resets after an hour.
+
+begin;
+insert into auth.users(id, email_confirmed_at) values
+  ('00000000-0000-4000-8000-000000000002', now()),
+  ('00000000-0000-4000-8000-000000000003', null);
+set local role authenticated;
+set local request.jwt.claim.sub = '00000000-0000-4000-8000-000000000001';
+do $$ declare category text; begin
+  foreach category in array array['feedback', 'suggestion', 'bug', 'feature'] loop
+    perform public.sketch_submit_feedback(category, '  A different report about alignment for ' || category || '  ');
+  end loop;
+  if (select count(*) from public.sketch_feedback where status = 'new' and message = btrim(message)) <> 4 then
+    raise exception 'Feedback categories, trimmed text or default status not persisted'; end if;
+  begin
+    perform public.sketch_submit_feedback('other', 'A sufficiently long report');
+    raise exception 'Invalid category accepted';
+  exception when raise_exception then if sqlerrm <> 'Invalid feedback' then raise; end if; end;
+  begin
+    perform public.sketch_submit_feedback('bug', 'short');
+    raise exception 'Short report accepted';
+  exception when raise_exception then if sqlerrm <> 'Invalid feedback' then raise; end if; end;
+  begin
+    update public.sketch_feedback set status = 'resolved';
+    raise exception 'Browser changed status';
+  exception when insufficient_privilege then null; end;
+end $$;
+set local request.jwt.claim.sub = '00000000-0000-4000-8000-000000000002';
+do $$ begin
+  if (select count(*) from public.sketch_feedback) <> 0 then raise exception 'Private feedback leaked to another user'; end if;
+end $$;
+set local request.jwt.claim.sub = '00000000-0000-4000-8000-000000000003';
+do $$ begin
+  perform public.sketch_submit_feedback('feedback', 'An unconfirmed account report');
+  raise exception 'Unconfirmed author accepted';
+exception when raise_exception then if sqlerrm <> 'Confirmed sign-in required' then raise; end if; end $$;
+set local request.jwt.claim.sub = '00000000-0000-4000-8000-000000000001';
+do $$ begin
+  for i in 5..10 loop perform public.sketch_submit_feedback('feedback', 'Additional detailed report ' || i); end loop;
+  begin
+    perform public.sketch_submit_feedback('bug', 'The eleventh report must be rejected');
+    raise exception 'Feedback limit bypassed';
+  exception when raise_exception then if sqlerrm <> 'Feedback limit reached' then raise; end if; end;
+end $$;
+reset role;
+set local role anon;
+do $$ begin
+  perform public.sketch_submit_feedback('bug', 'An anonymous account report');
+  raise exception 'Anonymous author accepted';
+exception when insufficient_privilege then null; end $$;
+reset role;
+-- Team-side status updates remain visible to the author, but no other user.
+update public.sketch_feedback set status = 'reviewing' where kind = 'bug';
+set local role authenticated;
+set local request.jwt.claim.sub = '00000000-0000-4000-8000-000000000001';
+do $$ begin
+  if not exists (select 1 from public.sketch_feedback where kind = 'bug' and status = 'reviewing') then
+    raise exception 'Author cannot retrieve updated report'; end if;
+end $$;
+rollback;
+\echo PASS: four feedback categories, persisted content/status, validation, own-only retrieval, confirmed-auth gate, immutable browser status, hourly rate limit.

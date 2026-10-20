@@ -109,6 +109,27 @@ configuration blocks workspace access. Prices are intentionally unset until the
 owner supplies them; paid checkout remains disabled. The guide documents trial,
 renewal, referral, and existing-account rollout rules and repeatable checks.
 
+### Private feedback, suggestions, bugs, and feature requests
+
+Open **Account → Feedback & requests**, the subscription-page feedback button,
+or **Give feedback** in the landing-page footer. `/feedback` requires sign-in,
+but not an active subscription. Submit one of four categories with 10–4,000
+characters of detail. The page shows your latest 10 submissions and their status,
+including after reload or signing in on another device. Failed requests keep the
+draft; no sketch images or browser history are uploaded with a report.
+
+After review and owner approval, apply
+`supabase/migrations/202610190002_feedback.sql` to the same Supabase project.
+Reports are persisted in `public.sketch_feedback`; RLS exposes only the author's
+own reports to browser clients. The submission RPC verifies email confirmation,
+validates input, sets the author server-side, and limits each author to 10 reports
+per rolling hour. Browser clients cannot edit/delete reports or change status.
+The team reviews reports in the Supabase dashboard and may set `status` to
+`new`, `reviewing`, `planned`, or `resolved` using trusted operator access.
+No separate admin UI or outbound feedback notifications are included. Deleting
+an auth account unlinks its reports while retaining the submitted text; operators
+must apply their retention/deletion policy to report content separately.
+
 ### Required configuration (not supplied by this repository)
 
 1. Use the **same Supabase project** as the other application. From its API

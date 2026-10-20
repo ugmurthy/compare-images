@@ -223,6 +223,7 @@
       {:else}
         <h1 id="auth-title">{title}</h1>
         <p>{mode === 'register' ? 'Try every feature free for 3 months. No credit card needed.' : mode === 'forgot' ? 'We’ll email you a link to choose a new password.' : mode === 'reset' ? 'Use a strong, unique password for your account.' : 'Sign in to align, compare, and measure your sketches.'}</p>
+        {#if page === '/feedback'}<p>Sign in to send private feedback and view your saved submissions. An active subscription is not required.</p>{/if}
         {#if mode === 'register'}
           <label for="signup-plan">Subscription type</label>
           <select id="signup-plan" bind:value={selectedPlan} disabled={busy}>

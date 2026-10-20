@@ -4,6 +4,7 @@
   import App from './App.svelte';
   import AccountMenu from './components/AccountMenu.svelte';
   import SubscriptionPage from './components/SubscriptionPage.svelte';
+  import FeedbackPage from './components/FeedbackPage.svelte';
   import { activateMembership, type Membership } from './lib/subscriptions';
 
   let { user, busy, onSignOut }: { user: User; busy: boolean; onSignOut: () => Promise<void> } = $props();
@@ -11,6 +12,7 @@
   let error = $state('');
   let loading = $state(true);
   let showPrices = $state(window.location.pathname === '/pricing');
+  let showFeedback = $state(window.location.pathname === '/feedback');
   let now = $state(Date.now());
   let disposed = false;
   const active = $derived(!!member && (member.plan === 'lifetime' || (!!member.expires_at && new Date(member.expires_at).getTime() > now)));
@@ -23,13 +25,15 @@
     } catch { if (!disposed) error = 'Could not check your subscription. Please retry. If this is a new installation, the membership backend must be configured.'; }
     finally { if (!disposed) loading = false; }
   }
-  function navigate(path: '/' | '/pricing' | '/pricing#referrals') {
-    showPrices = path !== '/';
+  function navigate(path: '/' | '/pricing' | '/pricing#referrals' | '/feedback') {
+    showPrices = path.startsWith('/pricing');
+    showFeedback = path === '/feedback';
     window.history.pushState(null, '', path);
+    window.scrollTo(0, 0);
   }
   onMount(() => {
     void refresh().then(() => {
-      if (!disposed && member && member.selected_plan !== member.plan) navigate('/pricing');
+      if (!disposed && member && member.selected_plan !== member.plan && !showFeedback) navigate('/pricing');
     });
     const timer = window.setInterval(() => { now = Date.now(); }, 1000);
     const focus = () => { void refresh(); };
@@ -38,7 +42,10 @@
   });
 </script>
 
-<svelte:window onpopstate={() => showPrices = window.location.pathname === '/pricing'} />
+<svelte:window onpopstate={() => {
+  showPrices = window.location.pathname === '/pricing';
+  showFeedback = window.location.pathname === '/feedback';
+}} />
 
 {#if loading || !member}
   <main class="membership-gate">
@@ -50,12 +57,14 @@
 {:else}
   {#if active}
     <!-- Retain comparison data, but remove workspace controls and shortcuts. -->
-    <App suspended={showPrices}>
-      {#snippet account()}<AccountMenu {user} {busy} {onSignOut} onSubscription={() => navigate('/pricing')} onInvite={() => navigate('/pricing#referrals')} />{/snippet}
+    <App suspended={showPrices || showFeedback}>
+      {#snippet account()}<AccountMenu {user} {busy} {onSignOut} onSubscription={() => navigate('/pricing')} onInvite={() => navigate('/pricing#referrals')} onFeedback={() => navigate('/feedback')} />{/snippet}
     </App>
   {/if}
-  {#if showPrices || !active}
-    <SubscriptionPage {member} email={user.email ?? ''} {active} onBack={() => navigate('/')} onRefresh={refresh} {onSignOut} />
+  {#if showFeedback}
+    <FeedbackPage onBack={() => navigate('/')} />
+  {:else if showPrices || !active}
+    <SubscriptionPage {member} email={user.email ?? ''} {active} onBack={() => navigate('/')} onRefresh={refresh} {onSignOut} onFeedback={() => navigate('/feedback')} />
   {/if}
   {#if error}<p class="member-error" role="alert">{error}</p>{/if}
 {/if}

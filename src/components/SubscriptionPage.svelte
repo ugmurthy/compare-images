@@ -5,9 +5,9 @@
   import { supabase } from '../lib/supabase';
   import { billing, planNames, purchasePlan, type Membership, type PlanId, type Price } from '../lib/subscriptions';
 
-  let { member = null, email = '', active = false, onChoose, onBack, onRefresh, onSignOut }:
+  let { member = null, email = '', active = false, onChoose, onBack, onRefresh, onSignOut, onFeedback }:
     { member?: Membership | null; email?: string; active?: boolean; onChoose?: (plan: PlanId) => void;
-      onBack: () => void; onRefresh?: () => Promise<void>; onSignOut?: () => Promise<void> } = $props();
+      onBack: () => void; onRefresh?: () => Promise<void>; onSignOut?: () => Promise<void>; onFeedback?: () => void } = $props();
   let prices = $state<Price[]>([]);
   let loading = $state(true);
   let busy = $state<PlanId | null>(null);
@@ -93,6 +93,7 @@
   <header>
     <a class="brand" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={24} />SketchLens</a>
     <div class="toolbar"><ThemeSelect />
+      {#if onFeedback}<button class="btn quiet" onclick={onFeedback}>Feedback & requests</button>{/if}
       {#if !member || active}<button class="btn quiet" disabled={!!busy} onclick={onBack}>{member ? 'Back to app' : 'Back to sign in'}</button>{/if}
       {#if onSignOut}<button class="btn" disabled={!!busy} onclick={() => void onSignOut?.()}>Sign out</button>{/if}</div>
   </header>

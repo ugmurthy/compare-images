@@ -94,7 +94,7 @@
     </section>
   </main>
 
-  <footer class="wrap"><a class="wordmark" href="/welcome"><Icon name="logo" size={22} /><span>SketchLens</span></a><p>Built for a closer look.</p><a href="/pricing">Plans & pricing</a><a href={signedIn ? '/' : '/signin'}>{signedIn ? 'Open workspace' : 'Sign in'}</a></footer>
+  <footer class="wrap"><a class="wordmark" href="/welcome"><Icon name="logo" size={22} /><span>SketchLens</span></a><p>Built for a closer look.</p><a href="/feedback">Give feedback</a><a href="/pricing">Plans & pricing</a><a href={signedIn ? '/' : '/signin'}>{signedIn ? 'Open workspace' : 'Sign in'}</a></footer>
 </div>
 
 <style>

@@ -19,6 +19,8 @@ let membershipFails = false;
 let pricesEnabled = true;
 let verificationFails = false;
 let invitationFails = false;
+let feedbackFails = false;
+const feedback: { id: string; kind: string; message: string; status: string; created_at: string }[] = [];
 const member = {
   user_id: '00000000-0000-4000-8000-000000000001', plan: 'free', selected_plan: 'free',
   expires_at: new Date(Date.now() + 90 * 86400000).toISOString(), activated_at: new Date().toISOString(),
@@ -62,6 +64,13 @@ const mock = Bun.serve({
     }
     if (url.pathname === '/functions/v1/sketch-referral') {
       return invitationFails ? failure() : json({ sent: true });
+    }
+    if (url.pathname === '/rest/v1/sketch_feedback') return json(feedback);
+    if (url.pathname === '/rest/v1/rpc/sketch_submit_feedback') {
+      if (feedbackFails) return failure();
+      const id = crypto.randomUUID();
+      feedback.unshift({ id, kind: body.p_kind, message: body.p_message, status: 'new', created_at: new Date().toISOString() });
+      return json(id);
     }
     if (url.pathname === '/functions/v1/sketch-billing') {
       if (body.action === 'prices') return json({ plans: [
@@ -418,6 +427,7 @@ try {
   await click('Account menu');
   await browser('press', 'ArrowUp');
   await browser('press', 'ArrowUp');
+  await browser('press', 'ArrowUp');
   await expectDOM('document.activeElement.textContent.trim() === "Invite friends"', 'Invite friends is reachable by keyboard');
   await browser('press', 'Enter');
   await browser('wait', '#invite-email');
@@ -455,6 +465,7 @@ try {
   await click('Back to app');
   await waitForApp();
   await click('Account menu');
+  await browser('press', 'ArrowUp');
   await browser('press', 'ArrowUp');
   await expectDOM('document.activeElement.textContent.trim() === "Subscription & referrals"', 'Arrow keys reach the new menu item');
   await browser('press', 'Enter');
@@ -526,12 +537,61 @@ try {
   await click('Continue with Google');
   await waitForApp();
   check(records.findLast((entry) => entry.path === '/rest/v1/rpc/sketch_activate')?.body.p_referral === member.referral_code, 'Copied invite intent survives Google OAuth and reaches activation');
+
+  await click('Account menu');
+  await browser('press', 'ArrowUp');
+  await expectDOM('document.activeElement.textContent.trim() === "Feedback & requests"', 'Feedback entry is keyboard reachable');
+  await browser('press', 'Enter');
+  await waitText('Your perspective matters.');
+  await expectDOM('!document.querySelector(".app-bar") && document.activeElement.tagName === "H1"', 'Feedback suspends workspace controls and focuses heading');
+  await capture('feedback-empty');
+  await browser('select', '#feedback-kind', 'bug');
+  await browser('fill', '#feedback-message', 'After rotating a sketch twice, the alignment preview stays blank. I expected both images to remain visible.');
+  await capture('feedback-bug');
+  await click('Send feedback');
+  await waitText('your submission has been saved');
+  check(feedback[0]?.kind === 'bug' && feedback[0]?.message.includes('rotating a sketch twice'), 'Feedback persists the selected category and exact report');
+  await expectDOM('document.querySelector("#feedback-message").value === "" && document.querySelector(".report-message").textContent.includes("rotating a sketch twice")', 'Successful save clears draft and displays saved report');
+  await capture('feedback-saved');
+  await browser('reload');
+  await waitText('rotating a sketch twice');
+  await browser('select', '#feedback-kind', 'feature');
+  await browser('fill', '#feedback-message', 'Please support a keyboard shortcut for switching between saved sketch regions.');
+  feedbackFails = true;
+  await click('Send feedback');
+  await waitText('Could not confirm that your feedback was saved.');
+  await expectDOM('document.querySelector("#feedback-message").value.includes("keyboard shortcut") && !document.body.textContent.includes("Private provider detail")', 'Failed submission keeps draft and category without exposing provider errors');
+  await capture('feedback-error');
+  feedbackFails = false;
+  await click('Send feedback');
+  await waitText('your submission has been saved');
+  check(feedback[0]?.kind === 'feature' && feedback.length === 2, 'Retry saves one feature request');
+  await click('Back to app');
+  await waitForApp();
+  member.plan = 'free'; member.expires_at = '2020-01-01T00:00:00Z';
+  await browser('open', `${origin}/pricing`);
+  await waitText('Expired');
+  await click('Feedback & requests');
+  await waitText('Your perspective matters.');
+  await expectDOM('!document.querySelector(".app-bar") && document.querySelectorAll(".report-message").length === 2', 'Expired members retain private feedback access and saved reports');
+  await click('Back to app');
+  await click('Sign out');
+  await waitText('Welcome back');
+  await browser('open', `${origin}/feedback`);
+  await waitText('Sign in to send private feedback');
+  await expectDOM('!document.querySelector("#feedback-message")', 'Signed-out visitors must sign in before posting or reading reports');
+  member.plan = 'lifetime'; member.expires_at = '';
+  await login();
+  await waitText('Your perspective matters.');
+  await click('Back to app');
+  await waitForApp();
   await signOut();
   await waitText('Welcome back');
   console.log('PASS: public landing; trial/signup/signin links and reloads; referral intent survives homepage/signin navigation; video playback and pause persistence; reduced-motion posters and explicit playback; desktop + narrow layouts.');
   console.log('PASS: auth gate; accessible forms; general errors; registration + PKCE confirmation; email login; persistence; account avatar placement/menu/keyboard/dismissal; light + dark layouts; sign-out success/failure; reset request/recovery/update/failure; Google PKCE + profile avatar/picture/persistence/error fallback; invalid/missing/denied/no-session callbacks; safe redirects; desktop + narrow overflow checks.');
   console.log('PASS: public prices; paid signup selection without entitlement; referral signup/navigation; membership failure/retry; subscription menu keyboard access; comparison preservation; cancelled/unverified/verified checkout; expired and lifetime access; exhausted referrals; unconfigured prices; desktop + narrow subscription layouts. Payment and identity providers are mocks, not live gateway verification.');
   console.log('PASS: keyboard invite entry; personal invite URL; real clipboard contents; manual-copy fallback; invitations after reward cap; copied-link email signup and Google referral propagation.');
+  console.log('PASS: email invite success/failure; feedback categories, saved reports after reload, failed-save draft retention, keyboard access, expired-member access, and signed-out gate. Backend responses in this browser suite are mocks.');
 } catch (error) {
   console.error(await browser('snapshot'));
   console.error(await browser('errors'));

@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import type { User } from '@supabase/supabase-js';
 
-  let { user, busy, onSignOut, onSubscription, onInvite }: { user: User; busy: boolean; onSignOut: () => Promise<void>; onSubscription: () => void; onInvite: () => void } = $props();
+  let { user, busy, onSignOut, onSubscription, onInvite, onFeedback }: { user: User; busy: boolean; onSignOut: () => Promise<void>; onSubscription: () => void; onInvite: () => void; onFeedback: () => void } = $props();
   const id = $props.id();
   let open = $state(false);
   let container: HTMLDivElement;
@@ -71,6 +71,9 @@
       </button>
       <button class="btn quiet" type="button" role="menuitem" disabled={busy} onclick={() => { closeMenu(); onSubscription(); }}>
         Subscription & referrals
+      </button>
+      <button class="btn quiet" type="button" role="menuitem" disabled={busy} onclick={() => { closeMenu(); onFeedback(); }}>
+        Feedback & requests
       </button>
       <button class="btn quiet" bind:this={signOutItem} type="button" role="menuitem" disabled={busy} onclick={() => void onSignOut()}>
         {busy ? 'Signing out…' : 'Sign out'}
