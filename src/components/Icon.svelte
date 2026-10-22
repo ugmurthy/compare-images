@@ -54,7 +54,7 @@
   {:else if name === 'more'}
     <circle cx="5" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="19" cy="12" r="1.3" />
   {:else if name === 'logo'}
-    <path d="M18 6V2L2 5v15l4-1M6 9l16-3v15L6 24ZM14 11v7m-3-3.5h6" transform="translate(1 0) scale(.9)" />
+    <path d="M18 6V2L2 5v15l4-1M6 9l16-3v15L6 24ZM14 11v7m-3-2.9375 6-1.125" transform="translate(1 0) scale(.9)" />
   {:else}
     <path d={paths[name]} />
   {/if}

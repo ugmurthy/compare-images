@@ -461,10 +461,7 @@
   }
 
   function addManualAnchor(side: 'ref' | 'src', point: Point) {
-    const selected = manualAnchors.find((anchor) => anchor.id === selectedManualAnchorId);
-    const target = selected?.[side] === null
-      ? selected
-      : manualAnchors.find((anchor) => anchor[side] === null);
+    const target = manualAnchors.find((anchor) => anchor[side] === null);
 
     if (target) {
       manualAnchors = manualAnchors.map((anchor) => anchor.id === target.id ? { ...anchor, [side]: point } : anchor);

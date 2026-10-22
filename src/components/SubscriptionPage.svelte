@@ -130,10 +130,10 @@
     <p class="payment-note">Paid plans use secure Razorpay checkout. No automatic renewals. Yearly purchases add 12 months to your remaining access, or start today if it has expired.</p>
     {#if error}<p class="error" role="alert">{error}</p><button class="btn" disabled={!!busy} onclick={() => void loadPrices()}>Retry prices</button>{/if}
     {#if notice}<p class="notice" role="status">{notice}</p>{/if}
-    <section class="referrals" id="referrals" aria-labelledby="referral-heading">
-      <div><span class="chip accent">Create together</span><h2 id="referral-heading" tabindex="-1">Invite friends</h2>
-        <p>Email a personal invitation, or copy your link to share it yourself. Your friend can create an account and try every feature free for 3 months.</p></div>
-      {#if member}
+    {#if member}
+      <section class="referrals" id="referrals" aria-labelledby="referral-heading">
+        <div><span class="chip accent">Create together</span><h2 id="referral-heading" tabindex="-1">Invite friends</h2>
+          <p>Email a personal invitation, or copy your link to share it yourself. Your friend can create an account and try every feature free for 3 months.</p></div>
         <div class="referral-details"><strong>{member.referrals_used} of 2 referrals rewarded</strong>
           <form onsubmit={emailLink}>
             <label for="invite-email">Friend’s email address</label>
@@ -150,8 +150,14 @@
           {:else}<p>You’ve earned both referral rewards. You can still invite more friends; further signups won’t add extra months.</p>{/if}
           {#if member.referral_result === 'unavailable'}<p>Your signup referral was invalid or already fully used. Your own access is unaffected.</p>{/if}
         </div>
-      {:else}<p>Create an account to get your personal invite link. Earn 3 extra months for each of your first two friends who confirms their email and opens the app.</p>{/if}
-    </section>
+      </section>
+    {:else}
+      <section class="signup-cta" aria-labelledby="signup-heading">
+        <div><span class="chip accent">Start creating</span><h2 id="signup-heading">See your sketches in a new light</h2>
+          <p>Create an account to try every feature free for 3 months. No credit card needed.</p></div>
+        <button class="btn primary" onclick={() => void subscribe('free')}>Create your free account</button>
+      </section>
+    {/if}
     {#if member && !active}<p class="payment-note">Your saved sketches remain in this browser. Subscribe or earn a referral extension to reopen the workspace.</p>{/if}
   </main>
 </div>
@@ -176,9 +182,10 @@
   ul { color: var(--ink-muted); display: grid; font-size: 0.85rem; gap: 10px; list-style-position: inside; margin: 4px 0 8px; }
   .plan .btn { margin-top: auto; }
   .payment-note { font-size: 0.82rem; line-height: 1.6; margin: 20px 0; text-align: center; }
-  .referrals { background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--radius-lg); display: grid; gap: 24px; margin-top: 32px; padding: 28px; }
-  .referrals h2 { margin: 12px 0 8px; }
-  .referrals p { max-width: 740px; }
+  .referrals, .signup-cta { background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--radius-lg); display: grid; gap: 24px; margin-top: 32px; padding: 28px; }
+  .referrals h2, .signup-cta h2 { margin: 12px 0 8px; }
+  .referrals p, .signup-cta p { max-width: 740px; }
+  .signup-cta .btn { justify-self: start; }
   .referral-details { display: grid; gap: 12px; }
   form { display: grid; gap: 10px; }
   small { color: var(--ink-muted); font-size: 0.75rem; }
@@ -194,7 +201,7 @@
     header { padding: 16px; }
     main { padding: 32px 16px; }
     .plans { grid-template-columns: 1fr; }
-    .plan, .referrals, .membership { padding: 22px; }
+    .plan, .referrals, .signup-cta, .membership { padding: 22px; }
     .link-row { align-items: stretch; flex-direction: column; }
   }
 </style>

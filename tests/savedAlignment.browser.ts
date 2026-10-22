@@ -107,6 +107,33 @@ export async function testSavedAlignment(): Promise<string> {
     check(!!find('Auto align') && !!find('Manual align') && !target.querySelector('.anchor-editor'), 'Saved automatic alignment offers both realignment methods');
     await click('Manual align');
     check(target.querySelectorAll('.anchor-handle').length === 0, 'Auto alignment does not inherit manual anchors from another comparison');
+    async function place(side: 'Reference' | 'Source', x: number, y: number) {
+      const frame = target.querySelector<HTMLElement>(`[aria-label="${side} anchor canvas"]`)!;
+      const image = frame.querySelector('img')!.getBoundingClientRect();
+      const event = { bubbles: true, pointerId: 1, isPrimary: true, button: 0, clientX: image.left + image.width * x, clientY: image.top + image.height * y };
+      const capture = frame.setPointerCapture;
+      frame.setPointerCapture = () => {};
+      try {
+        frame.dispatchEvent(new PointerEvent('pointerdown', event));
+        frame.dispatchEvent(new PointerEvent('pointerup', event));
+      } finally { frame.setPointerCapture = capture; }
+      await tick();
+    }
+    for (const [x, y] of [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]]) await place('Reference', x, y);
+    await place('Source', 0.25, 0.25);
+    check(!!find('Source anchor 1') && !find('Source anchor 4'), 'After batching reference points, source starts at point 1, not the last selected reference');
+    await place('Reference', 0.5, 0.5);
+    await place('Source', 0.75, 0.25);
+    check(!!find('Source anchor 2') && !find('Source anchor 5'), 'Returning to source continues with its next missing point');
+    await place('Source', 0.75, 0.75);
+    await place('Source', 0.25, 0.75);
+    await place('Source', 0.5, 0.5);
+    check(!find('Apply manual alignment')!.disabled && target.querySelectorAll('.anchor-handle').length === 10, 'Batch placement completes all five pairs');
+    await click('Clear all');
+    await place('Source', 0.25, 0.25);
+    await place('Source', 0.75, 0.25);
+    await place('Reference', 0.2, 0.2);
+    check(!!find('Reference anchor 1') && !find('Reference anchor 2'), 'Source-first batch placement also pairs from the first missing point');
     await open('auto'); await click('Edit anchors'); await click('Auto align');
     await wait(() => !!find('Save comparison') && !find('Save comparison')!.disabled, 'Auto runs again instead of showing cached alignment');
     await save(fixtures[1].projectName);

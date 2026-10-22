@@ -374,7 +374,13 @@ try {
   // Amounts here are fixtures, never the production price catalog.
   await browser('open', `${origin}/pricing`);
   await waitText('Choose Yearly');
+  await expectDOM('!document.querySelector("#referrals") && !document.body.textContent.includes("Invite friends")', 'Signed-out pricing hides member referral tools and copy');
   await capture('public-prices');
+  await click('Create your free account');
+  await waitText('Create your account');
+  await expectDOM('location.pathname === "/signup" && document.querySelector("#signup-plan").value === "free" && !document.querySelector(".app-bar")', 'Public pricing registration CTA opens free-plan signup without granting access');
+  await browser('open', `${origin}/pricing`);
+  await waitText('Choose Yearly');
   await click('Choose Yearly');
   await expectDOM('document.querySelector("#signup-plan").value === "yearly"', 'Pricing choice preselects signup plan');
   await browser('select', '#signup-plan', 'lifetime');
