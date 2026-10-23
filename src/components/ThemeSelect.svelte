@@ -2,13 +2,14 @@
   import { onMount } from 'svelte';
   import Icon from './Icon.svelte';
 
+  let { remember = true, showControl = true }: { remember?: boolean; showControl?: boolean } = $props();
   let theme = $state('system');
-  try {
-    const saved = localStorage.getItem('compare-sketch-theme');
-    if (saved === 'light' || saved === 'dark') theme = saved;
-  } catch { /* Theme still works when browser storage is unavailable. */ }
 
   onMount(() => {
+    try {
+      const saved = remember ? localStorage.getItem('compare-sketch-theme') : null;
+      if (saved === 'light' || saved === 'dark') theme = saved;
+    } catch { /* Theme still works when browser storage is unavailable. */ }
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const update = () => {
       document.documentElement.dataset.theme = theme === 'system' ? (media.matches ? 'dark' : 'light') : theme;
@@ -21,19 +22,21 @@
   $effect(() => {
     document.documentElement.dataset.theme = theme === 'system'
       ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
-    try { localStorage.setItem('compare-sketch-theme', theme); }
+    try { if (remember) localStorage.setItem('compare-sketch-theme', theme); }
     catch { /* Keep the selected theme for this session. */ }
   });
 </script>
 
-<div class="theme-tool" title={`Color theme: ${theme}`}>
-  <Icon name="theme" />
-  <select aria-label="Color theme" bind:value={theme}>
-    <option value="system">System</option>
-    <option value="light">Light</option>
-    <option value="dark">Dark</option>
-  </select>
-</div>
+{#if showControl}
+  <div class="theme-tool" title={`Color theme: ${theme}`}>
+    <Icon name="theme" />
+    <select aria-label="Color theme" bind:value={theme}>
+      <option value="system">System</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+  </div>
+{/if}
 
 <style>
   .theme-tool { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; color: var(--ink-muted); }

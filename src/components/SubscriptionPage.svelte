@@ -92,13 +92,13 @@
 <div class="subscriptions">
   <header>
     <a class="brand app-wordmark" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={44} />SketchLens</a>
-    <div class="toolbar"><ThemeSelect />
+    <div class="toolbar"><ThemeSelect remember={!!member} />
       {#if onFeedback}<button class="btn quiet" onclick={onFeedback}>Feedback & requests</button>{/if}
       {#if !member || active}<button class="btn quiet" disabled={!!busy} onclick={onBack}>{member ? 'Back to app' : 'Back to sign in'}</button>{/if}
       {#if onSignOut}<button class="btn" disabled={!!busy} onclick={() => void onSignOut?.()}>Sign out</button>{/if}</div>
   </header>
   <main>
-    <div class="intro"><span class="chip accent">All features on every plan</span><h1>Your sketches. Your pace.</h1>
+    <div class="intro"><h1>Your sketches. Your pace.</h1>
       <p>Align, compare, measure, and save your work — choose how long you’d like access.</p></div>
     {#if member}
       <section class="membership" aria-label="Current subscription">
@@ -115,7 +115,7 @@
         {@const plan = id as PlanId}
         {@const available = prices.find((item) => item.id === plan)?.enabled}
         <section class="plan" class:recommended={plan === 'yearly'} aria-label={`${planNames[plan]} plan`}>
-          <div class="plan-heading"><h2>{planNames[plan]}</h2>{#if plan === 'yearly'}<span class="chip accent">Keep creating</span>{/if}</div>
+          <h2>{planNames[plan]}</h2>
           <div class="price">{priceLabel(plan)}</div>
           <p class="term">{plan === 'free' ? '3 months · once per account' : plan === 'yearly' ? '12 months · one-time payment' : 'Forever · one-time payment'}</p>
           <p>{descriptions[plan]}</p>
@@ -151,12 +151,6 @@
           {#if member.referral_result === 'unavailable'}<p>Your signup referral was invalid or already fully used. Your own access is unaffected.</p>{/if}
         </div>
       </section>
-    {:else}
-      <section class="signup-cta" aria-labelledby="signup-heading">
-        <div><span class="chip accent">Start creating</span><h2 id="signup-heading">See your sketches in a new light</h2>
-          <p>Create an account to try every feature free for 3 months. No credit card needed.</p></div>
-        <button class="btn primary" onclick={() => void subscribe('free')}>Create your free account</button>
-      </section>
     {/if}
     {#if member && !active}<p class="payment-note">Your saved sketches remain in this browser. Subscribe or earn a referral extension to reopen the workspace.</p>{/if}
   </main>
@@ -176,16 +170,14 @@
   .plans { display: grid; gap: 20px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .plan { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 16px; padding: 24px; }
   .recommended { border-color: var(--accent-ring); box-shadow: var(--shadow); }
-  .plan-heading { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
   .price { font-size: 1.8rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2; }
   .term { font-size: 0.8rem; margin-top: -6px; }
   ul { color: var(--ink-muted); display: grid; font-size: 0.85rem; gap: 10px; list-style-position: inside; margin: 4px 0 8px; }
   .plan .btn { margin-top: auto; }
   .payment-note { font-size: 0.82rem; line-height: 1.6; margin: 20px 0; text-align: center; }
-  .referrals, .signup-cta { background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--radius-lg); display: grid; gap: 24px; margin-top: 32px; padding: 28px; }
-  .referrals h2, .signup-cta h2 { margin: 12px 0 8px; }
-  .referrals p, .signup-cta p { max-width: 740px; }
-  .signup-cta .btn { justify-self: start; }
+  .referrals { background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--radius-lg); display: grid; gap: 24px; margin-top: 32px; padding: 28px; }
+  .referrals h2 { margin: 12px 0 8px; }
+  .referrals p { max-width: 740px; }
   .referral-details { display: grid; gap: 12px; }
   form { display: grid; gap: 10px; }
   small { color: var(--ink-muted); font-size: 0.75rem; }
@@ -201,7 +193,7 @@
     header { padding: 16px; }
     main { padding: 32px 16px; }
     .plans { grid-template-columns: 1fr; }
-    .plan, .referrals, .signup-cta, .membership { padding: 22px; }
+    .plan, .referrals, .membership { padding: 22px; }
     .link-row { align-items: stretch; flex-direction: column; }
   }
 </style>

@@ -50,11 +50,13 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Public landing page
 
-Signed-out visitors at `/` see an Align/Compare/Measure/Replay feature showcase. `/welcome`
+Signed-out visitors at `/` see an Align/Compare/Measure/Share feature showcase. `/welcome`
 always shows that landing page, including when signed in; all SketchLens brand
 links lead there. `/signup`
 and `/signin` open the existing authentication forms; valid `/?ref=…` links
 still open referred signup directly. Signed-in visitors continue into the app.
+Signed-out visits default to the system color theme without changing a member's
+saved theme preference. The public pricing selector can override it for that visit.
 
 The silent H.264 loops and JPEG posters in `public/demos/` are cropped from the
 four supplied October 23 recordings, each 1950×1608. The hero uses the focused
@@ -65,9 +67,8 @@ The landing follows the centered “big picture” layout: brand and trial CTA a
 a wide hero, followed by four compact feature cards. Each preview can be expanded
 for a closer look without cropping the original recording.
 
-Replay uses the supplied **Lilia-Portrait-Study-progress.gif**, a five-frame,
-458×640, two-second loop. The unchanged original is downloadable as
-`/demos/progress.gif`. Its preview is an H.264 conversion (`fps=25`, CRF 18,
+Share uses the supplied **Lilia-Portrait-Study-progress.gif**, a five-frame,
+458×640, two-second loop. Its preview is an H.264 conversion (`fps=25`, CRF 18,
 `yuv420p`, no audio, fast-start metadata), with a JPEG poster from the first frame.
 Using a video preview rather than an always-animating GIF preserves pause,
 offscreen, background-tab, and reduced-motion behavior. It shows saved drawing

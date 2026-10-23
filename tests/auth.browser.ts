@@ -168,11 +168,18 @@ function last(path: string) {
 try {
   if (artifacts) await mkdir(artifacts, { recursive: true });
   await browser('open', origin);
-  await browser('eval', 'localStorage.clear()');
+  await browser('set', 'media', 'light');
+  await browser('eval', 'localStorage.clear(); localStorage.setItem("compare-sketch-theme", "dark")');
   await browser('reload');
   await waitText('See the difference.');
+  await expectDOM('document.documentElement.dataset.theme === "light" && localStorage.getItem("compare-sketch-theme") === "dark"', 'Signed-out visits follow the system instead of a saved member preference, without overwriting it');
+  await browser('set', 'media', 'dark');
+  await browser('wait', '--fn', 'document.documentElement.dataset.theme === "dark"');
+  await browser('set', 'media', 'light');
+  await browser('wait', '--fn', 'document.documentElement.dataset.theme === "light"');
   await expectDOM('!document.querySelector(".app-bar") && document.body.textContent.includes("No credit card needed")', 'Public homepage showcases the app without mounting the protected workspace');
-  await expectDOM('document.querySelector(".hero video").getAttribute("src") === "/demos/hero-sketch.mp4" && ["align", "compare", "measure"].every(id => document.querySelector(`#${id} video`).getAttribute("src") === `/demos/${id}.mp4`) && document.querySelector("#replay video").getAttribute("src") === "/demos/progress.mp4" && document.querySelector("#replay a[download]").getAttribute("href") === "/demos/progress.gif"', 'Hero and feature sections use their corresponding recordings, with the real progress GIF available to download');
+  await expectDOM('document.querySelector(".hero video").getAttribute("src") === "/demos/hero-sketch.mp4" && ["align", "compare", "measure"].every(id => document.querySelector(`#${id} video`).getAttribute("src") === `/demos/${id}.mp4`) && document.querySelector("#replay video").getAttribute("src") === "/demos/progress.mp4" && document.querySelector("#replay h3").textContent.includes("Share") && !document.querySelector("a[download]")', 'Hero and feature sections use their corresponding recordings, with a Share preview but no example download');
+  await expectDOM('document.querySelector("nav").textContent.trim() === "Pricing" && !document.querySelector(".accuracy-notes") && document.querySelector("#align figcaption").textContent.includes("Match it")', 'Landing navigation and tool cards show the simplified presentation');
   await capture('landing');
   await browser('set', 'viewport', '1280', '900', '2');
   await browser('wait', '--fn', 'document.querySelector("video").currentTime > 0 && !document.querySelector("video").paused');
@@ -187,7 +194,7 @@ try {
   await waitText('See the difference.');
   await expectDOM('matchMedia("(prefers-reduced-motion: reduce)").matches && [...document.querySelectorAll("video")].every(v => v.paused)', 'Reduced motion shows static posters instead of autoplaying loops');
   await capture('landing-reduced-motion');
-  await browser('click', 'nav a[href="#replay"]');
+  await browser('scrollintoview', '#replay');
   await click('Play drawing progress GIF demo');
   await browser('wait', '--fn', 'document.querySelector("#replay video").currentTime > 0 && !document.querySelector("#replay video").paused');
   await click('Pause drawing progress GIF demo');
@@ -207,6 +214,21 @@ try {
   await waitText('Create your account');
   await expectDOM('document.querySelector("#signup-plan").value === "free" && !document.querySelector(".app-bar")', 'Trial CTA opens free-plan registration without granting access');
   await browser('reload');
+  await waitText('Create your account');
+  await browser('find', 'role', 'link', 'click', '--name', 'SketchLens home', '--exact');
+  await waitText('See the difference.');
+  await browser('click', 'nav a[href="/pricing"]');
+  await waitText('Choose Free');
+  await expectDOM('document.querySelector(".theme-tool select").value === "system" && document.documentElement.dataset.theme === "light" && !document.querySelector(".signup-cta") && !document.body.textContent.includes("All features on every plan") && !document.body.textContent.includes("Keep creating")', 'Public pricing defaults to system and omits the redundant badges and signup block');
+  await browser('select', 'select[aria-label="Color theme"]', 'dark');
+  await expectDOM('document.documentElement.dataset.theme === "dark" && localStorage.getItem("compare-sketch-theme") === "dark"', 'Public pricing permits an explicit theme for this visit');
+  await browser('select', 'select[aria-label="Color theme"]', 'light');
+  await expectDOM('localStorage.getItem("compare-sketch-theme") === "dark"', 'Public theme choices do not overwrite the saved member preference');
+  await browser('reload');
+  await waitText('Choose Free');
+  await expectDOM('document.querySelector(".theme-tool select").value === "system" && document.documentElement.dataset.theme === "light"', 'Reloading public pricing restores the system default');
+  await capture('public-prices');
+  await click('Choose Free');
   await waitText('Create your account');
   await browser('find', 'role', 'link', 'click', '--name', 'SketchLens home', '--exact');
   await waitText('See the difference.');
@@ -237,6 +259,7 @@ try {
   await capture('registration-sent');
   await browser('open', `${origin}/auth/callback?code=confirmation-code&next=https://untrusted.example`);
   await waitForApp();
+  await expectDOM('document.querySelector(".theme-tool select").value === "dark" && document.documentElement.dataset.theme === "dark"', 'Signing in restores the preserved member theme preference');
   check(await browser('get', 'url') === `${origin}/`, 'Callback strips code, never follows next redirect');
   check(records.filter((record) => record.body.auth_code === 'confirmation-code').length === 1, 'Code exchanged exactly once');
   await browser('reload');
@@ -245,7 +268,7 @@ try {
   await browser('find', 'role', 'link', 'click', '--name', 'SketchLens home', '--exact');
   await waitText('See the difference.');
   await expectDOM('!document.querySelector(".app-bar") && document.querySelector(".account-actions").textContent.includes("Open workspace")', 'Signed-in brand opens the public landing page, not the workspace');
-  await browser('click', '.account-actions a');
+  await browser('click', '.account-actions a[href="/"]');
   await waitForApp();
   await capture('workspace');
   await expectDOM('!document.querySelector(".account-avatar img") && document.querySelector(".account-avatar").textContent.trim() === "A"', 'Missing profile photo falls back to email initial');
@@ -279,6 +302,7 @@ try {
   await signOut();
   await waitText('session revocation could not be confirmed');
   await expectDOM('!document.querySelector(".app-bar")', 'Remote sign-out failure still clears local session and unmounts the workspace');
+  await expectDOM('document.documentElement.dataset.theme === "light"', 'Signing out returns to the system theme');
   await capture('signout-warning');
   signOutFails = false;
   await browser('reload');
@@ -389,7 +413,7 @@ try {
   await waitText('Choose Yearly');
   await expectDOM('!document.querySelector("#referrals") && !document.body.textContent.includes("Invite friends")', 'Signed-out pricing hides member referral tools and copy');
   await capture('public-prices');
-  await click('Create your free account');
+  await click('Choose Free');
   await waitText('Create your account');
   await expectDOM('location.pathname === "/signup" && document.querySelector("#signup-plan").value === "free" && !document.querySelector(".app-bar")', 'Public pricing registration CTA opens free-plan signup without granting access');
   await browser('open', `${origin}/pricing`);

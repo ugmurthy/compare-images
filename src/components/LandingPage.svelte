@@ -3,7 +3,7 @@
   import DemoLoop from './DemoLoop.svelte';
   let { signedIn = false }: { signedIn?: boolean } = $props();
   const features = [
-    { id: 'align', name: 'align', title: 'Align', label: 'four-point alignment demo', caption: 'Match points', height: 950,
+    { id: 'align', name: 'align', title: 'Align', label: 'four-point alignment demo', caption: 'Match it', height: 950,
       benefit: 'Your drawing. Not your camera angle.',
       description: 'Bring your reference and sketch into the same perspective. Match at least four points across both images, with a 3× magnifier to refine placement.' },
     { id: 'compare', name: 'compare', title: 'Compare', label: 'whole-image and selected-part comparison demo', caption: 'Whole & part', height: 858,
@@ -12,9 +12,9 @@
     { id: 'measure', name: 'measure', title: 'Measure', label: 'synchronized measurement and panning demo', caption: 'Measure in sync', height: 1056,
       benefit: 'Two images. One connected view.',
       description: 'Measure corresponding points on your reference and aligned sketch together. Zoom to 2× or 4× and pan both images in sync, with live width and height readouts.' },
-    { id: 'replay', name: 'progress', title: 'Replay', label: 'drawing progress GIF demo', caption: '5 saved stages', height: 640,
+    { id: 'replay', name: 'progress', title: 'Share', label: 'drawing progress GIF demo', caption: '5 saved stages', height: 640,
       benefit: 'Your drawing, over time.',
-      description: 'Photograph, align, and save each stage to the same project. In History, download a progress GIF to replay your saved stages from oldest to newest—and share the journey.' }
+      description: 'Share your drawing journey with a GIF made from images at different stages of your project.' }
   ];
 </script>
 
@@ -22,11 +22,8 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <header>
     <div class="header-inner">
-      <a class="wordmark" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={28} /><span>SketchLens</span></a>
-      <nav aria-label="Main navigation">
-        <a href="#align">Align</a><a href="#compare">Compare</a><a href="#measure">Measure</a><a href="#replay">Replay</a><a href="/pricing">Pricing</a>
-      </nav>
-      <div class="account-actions">{#if signedIn}<a class="btn primary" href="/">Open workspace <Icon name="next" size={15} /></a>{:else}<a class="btn quiet" href="/signin">Sign in</a><a class="btn primary" href="/signup">Start free <Icon name="next" size={15} /></a>{/if}</div>
+      <a class="app-wordmark" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={44} /><span>SketchLens</span></a>
+      <div class="account-actions"><nav aria-label="Main navigation"><a href="/pricing">Pricing</a></nav>{#if signedIn}<a class="btn primary" href="/">Open workspace <Icon name="next" size={15} /></a>{:else}<a class="btn quiet" href="/signin">Sign in</a><a class="btn primary" href="/signup">Start free <Icon name="next" size={15} /></a>{/if}</div>
     </div>
   </header>
 
@@ -34,7 +31,7 @@
     <section class="hero wrap" aria-labelledby="hero-title">
       <div class="hero-copy">
         <h1 id="hero-title"><a class="hero-brand" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={80} /><span>SketchLens</span></a></h1>
-        <p class="hero-tagline">Align. Compare. Measure. <span>Replay.</span></p>
+        <p class="hero-tagline">Align. Compare. Measure. <span>Share.</span></p>
         <h2 class="hero-benefit">A clearer way to draw.</h2>
         <p class="intro">Bring your reference and sketch into focus. Compare the whole drawing or any detail, measure in sync, and turn your progress into a shareable GIF.</p>
         <div class="hero-actions"><a class="btn primary" href={signedIn ? '/' : '/signup'}>{signedIn ? 'Open your workspace' : 'Start your free trial'} <Icon name="next" size={18} /></a></div>
@@ -59,12 +56,10 @@
               <h3 id={`${feature.id}-title`}><span class="step-number">{index + 1}</span>{feature.title}</h3>
               <h4>{feature.benefit}</h4>
               <p>{feature.description}</p>
-              {#if feature.id === 'replay'}<a class="text-link" href="/demos/progress.gif" download="Lilia-Portrait-Study-progress.gif"><Icon name="export" size={15} />Download example GIF</a>{/if}
             </div>
           </article>
         {/each}
       </div>
-      <div class="accuracy-notes"><p>Alignment corrects a flat page’s photo perspective, not drawing errors. Measurements describe image-space proportions, not perspective-correct physical dimensions.</p><p>The replay is a real five-stage drawing study, made from saved images—not a live recording of strokes.</p></div>
     </section>
 
     <div class="trust wrap">
@@ -76,7 +71,7 @@
     <section class="closing wrap" aria-labelledby="closing-title">
       <p class="eyebrow">Your next study starts here</p>
       <h2 id="closing-title">Keep drawing. <span>See what comes next.</span></h2>
-      <p>Align, compare, measure, and replay. All features, free for 3 months.</p>
+      <p>Align, compare, measure, and share. All features, free for 3 months.</p>
       <a class="btn primary" href={signedIn ? '/' : '/signup'}>{signedIn ? 'Return to your workspace' : 'Create your free account'} <Icon name="next" size={18} /></a>
       <p class="trial-note">No credit card needed. <a href="/pricing">Explore plans & pricing <span aria-hidden="true">↗</span></a></p>
     </section>
@@ -90,13 +85,13 @@
   a, .landing :global(button) { scroll-margin-block: 140px 24px; }
   .wrap, .header-inner { margin-inline: auto; max-width: 1240px; width: calc(100% - 96px); }
   header { background: var(--surface-frost); border-bottom: 1px solid var(--hairline); position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); }
-  .header-inner { align-items: center; display: flex; gap: 32px; min-height: 80px; }
+  .header-inner { align-items: center; display: flex; gap: 24px; justify-content: space-between; min-height: 80px; }
   .wordmark { align-items: center; color: var(--ink); display: inline-flex; font-size: 1.15rem; font-weight: 600; gap: 10px; letter-spacing: -0.04em; text-decoration: none; white-space: nowrap; }
   .wordmark :global(svg) { color: var(--accent); }
-  nav { display: flex; gap: 24px; margin-left: auto; }
+  nav { align-items: center; display: flex; margin-right: 16px; }
   nav a, footer > a:not(.wordmark) { color: var(--ink-muted); font-size: 0.82rem; text-decoration: none; }
   nav a:hover, footer > a:hover { color: var(--accent); }
-  .account-actions { display: flex; gap: 8px; }
+  .account-actions { align-items: center; display: flex; gap: 8px; }
   .hero { padding-block: 48px 36px; text-align: center; }
   h1 { font-size: clamp(2.5rem, 4.8vw, 3.7rem); letter-spacing: -0.06em; line-height: 1.1; }
   .hero-brand { align-items: center; color: var(--ink); display: inline-flex; gap: 14px; text-decoration: none; white-space: nowrap; }
@@ -127,9 +122,7 @@
   .step-number { align-items: center; background: var(--accent-tint); border-radius: 50%; color: var(--accent); display: inline-flex; flex: none; font-size: 0.85rem; height: 28px; justify-content: center; width: 28px; }
   h4 { font-size: 0.83rem; font-weight: 500; letter-spacing: -0.02em; line-height: 1.6; margin-top: 16px; }
   .feature-copy > p { color: var(--ink-muted); font-size: 0.8rem; line-height: 1.8; margin-top: 8px; }
-  .text-link { align-items: center; color: var(--accent); display: inline-flex; font-size: 0.75rem; font-weight: 500; gap: 6px; line-height: 1.6; margin-top: 16px; text-decoration: none; }
   .gif-label { background: var(--surface-frost); border: 1px solid var(--border-strong); border-radius: 6px; color: var(--ink); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.06em; padding: 4px 7px; pointer-events: none; position: absolute; right: 10px; top: 10px; }
-  .accuracy-notes { color: var(--ink-muted); display: grid; font-size: 0.7rem; gap: 28px; grid-template-columns: 1fr 1fr; line-height: 1.8; margin-top: 20px; }
   .trust { align-items: center; border-block: 1px solid var(--hairline); display: flex; gap: 24px; justify-content: space-between; padding-block: 24px; }
   .trust > span { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.74rem; gap: 10px; }
   .trust :global(svg) { color: var(--accent); }
@@ -147,7 +140,6 @@
   @media (max-width: 1100px) {
     .wrap, .header-inner { width: calc(100% - 48px); }
     .header-inner { gap: 20px; }
-    nav { gap: 16px; }
     .feature-grid { gap: 16px; }
     .feature-copy { padding: 16px; }
   }
@@ -155,7 +147,6 @@
   @media (max-width: 850px) {
     .header-inner { flex-wrap: wrap; gap: 8px; padding-block: 14px 10px; }
     .account-actions { margin-left: auto; }
-    nav { border-top: 1px solid var(--hairline); gap: 24px; justify-content: center; margin-top: 6px; order: 3; padding-top: 10px; width: 100%; }
     .trust { flex-wrap: wrap; justify-content: center; gap: 16px 28px; }
     .feature-card { scroll-margin-top: 140px; }
   }
@@ -165,7 +156,7 @@
     .account-actions { gap: 0; }
     .account-actions .btn { font-size: 0.76rem; min-height: 38px; padding-inline: 10px; }
     .account-actions .primary :global(svg) { display: none; }
-    nav { gap: 22px; }
+    nav { margin-right: 8px; }
     nav a { font-size: 0.75rem; }
     .hero { padding-block: 36px 28px; }
     h1 { font-size: clamp(2.3rem, 9vw, 3.8rem); }
@@ -179,7 +170,6 @@
     .feature-copy > p { font-size: 0.9rem; }
     .feature-copy h4 { font-size: 0.95rem; }
     .feature-media :global(video) { aspect-ratio: 16 / 10; }
-    .accuracy-notes { gap: 14px; grid-template-columns: 1fr; }
     .trust { align-items: flex-start; flex-direction: column; gap: 16px; padding-block: 20px; }
     .closing { padding-block: 44px; }
     footer { column-gap: 20px; row-gap: 16px; }
@@ -190,7 +180,6 @@
     .wordmark { font-size: 0.85rem; }
     .wordmark :global(svg) { width: 22px; }
     .account-actions .btn { padding-inline: 8px; }
-    nav { gap: 18px; }
     .hero-tagline { font-size: 0.9rem; }
   }
 </style>

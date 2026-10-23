@@ -5,6 +5,7 @@
   import Icon from './components/Icon.svelte';
   import SubscriptionPage from './components/SubscriptionPage.svelte';
   import LandingPage from './components/LandingPage.svelte';
+  import ThemeSelect from './components/ThemeSelect.svelte';
   import { signupIntent, rememberSignup, type PlanId } from './lib/subscriptions';
   import { authConfigurationError, supabase } from './lib/supabase';
 
@@ -200,6 +201,10 @@
   else if (page === '/signin' || page === '/') mode = 'login';
   else if (page === '/auth/forgot-password') mode = 'forgot';
 }} />
+
+{#if !session && !(ready && page === '/pricing' && !authConfigurationError)}
+  <ThemeSelect remember={false} showControl={false} />
+{/if}
 
 {#if (page === '/welcome' || (!session && page === '/' && mode === 'login')) && (ready || authConfigurationError)}
   <LandingPage signedIn={!!session} />

@@ -71,7 +71,7 @@
     <span>{failed ? 'Preview unavailable' : caption}</span>
     <div class="player-actions">
       <button class="btn quiet" onclick={toggle} disabled={failed} aria-label={`${playing ? 'Pause' : 'Play'} ${label}`}>
-        <Icon name={playing ? 'stop' : 'play'} size={14} />{playing ? 'Pause' : 'Play'}
+        <Icon name={playing ? 'pause' : 'play'} size={14} />{playing ? 'Pause' : 'Play'}
       </button>
       {#if canExpand}<button class="btn quiet expand" onclick={toggleFullscreen} aria-label={`${expanded ? 'Close' : 'Expand'} ${label}`}><Icon name={expanded ? 'close' : 'parts'} size={15} /></button>{/if}
     </div>

@@ -25,6 +25,7 @@
     new: 'M14 3H4v18h16V11M18 2v8M14 6h8M8 9h3M8 13h6M8 17h6',
     parts: 'M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5M8 8h8v8H8Z',
     play: 'm8 5 11 7-11 7Z',
+    pause: 'M8 5v14M16 5v14',
     stop: 'M6 6h12v12H6Z',
     theme: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 3v18',
     magnifier: 'M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm6-2 5 5M6 10h8M10 6v8',
