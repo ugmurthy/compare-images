@@ -2,15 +2,29 @@
   import Icon from './Icon.svelte';
   import DemoLoop from './DemoLoop.svelte';
   let { signedIn = false }: { signedIn?: boolean } = $props();
+  const features = [
+    { id: 'align', name: 'align', title: 'Align', label: 'four-point alignment demo', caption: 'Match points', height: 950,
+      benefit: 'Your drawing. Not your camera angle.',
+      description: 'Bring your reference and sketch into the same perspective. Match at least four points across both images, with a 3× magnifier to refine placement.' },
+    { id: 'compare', name: 'compare', title: 'Compare', label: 'whole-image and selected-part comparison demo', caption: 'Whole & part', height: 858,
+      benefit: 'The whole picture. Any detail.',
+      description: 'Compare whole images, then select just the part you’re working on. Study matching regions side by side, or animate an overlay to see where lines diverge.' },
+    { id: 'measure', name: 'measure', title: 'Measure', label: 'synchronized measurement and panning demo', caption: 'Measure in sync', height: 1056,
+      benefit: 'Two images. One connected view.',
+      description: 'Measure corresponding points on your reference and aligned sketch together. Zoom to 2× or 4× and pan both images in sync, with live width and height readouts.' },
+    { id: 'replay', name: 'progress', title: 'Replay', label: 'drawing progress GIF demo', caption: '5 saved stages', height: 640,
+      benefit: 'Your drawing, over time.',
+      description: 'Photograph, align, and save each stage to the same project. In History, download a progress GIF to replay your saved stages from oldest to newest—and share the journey.' }
+  ];
 </script>
 
 <div class="landing">
   <a class="skip-link" href="#main">Skip to content</a>
   <header>
     <div class="header-inner">
-      <a class="wordmark" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={26} /><span>SketchLens</span></a>
+      <a class="wordmark" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={28} /><span>SketchLens</span></a>
       <nav aria-label="Main navigation">
-        <a href="#align">Align</a><a href="#compare">Compare</a><a href="#measure">Measure</a><a href="/pricing">Pricing</a>
+        <a href="#align">Align</a><a href="#compare">Compare</a><a href="#measure">Measure</a><a href="#replay">Replay</a><a href="/pricing">Pricing</a>
       </nav>
       <div class="account-actions">{#if signedIn}<a class="btn primary" href="/">Open workspace <Icon name="next" size={15} /></a>{:else}<a class="btn quiet" href="/signin">Sign in</a><a class="btn primary" href="/signup">Start free <Icon name="next" size={15} /></a>{/if}</div>
     </div>
@@ -20,189 +34,163 @@
     <section class="hero wrap" aria-labelledby="hero-title">
       <div class="hero-copy">
         <h1 id="hero-title"><a class="hero-brand" href="/welcome" aria-label="SketchLens home"><Icon name="logo" size={80} /><span>SketchLens</span></a></h1>
-        <p class="hero-tagline">Align. Compare. Measure.</p>
-        <h2 class="hero-benefit">See the difference.<br />Measure the details.</h2>
-        <p class="intro">Bring your reference and sketch into focus. Align your photos, compare the parts that matter, and understand every proportion.</p>
-        <div class="hero-actions"><a class="btn primary" href={signedIn ? '/' : '/signup'}>{signedIn ? 'Open your workspace' : 'Start your free trial'} <Icon name="next" size={18} /></a><a class="watch-link" href="#align">See how it works <span aria-hidden="true">↓</span></a></div>
-        <p class="trial-note"><Icon name="check" size={16} />3 months. All features. No credit card needed.</p>
+        <p class="hero-tagline">Align. Compare. Measure. <span>Replay.</span></p>
+        <h2 class="hero-benefit">A clearer way to draw.</h2>
+        <p class="intro">Bring your reference and sketch into focus. Compare the whole drawing or any detail, measure in sync, and turn your progress into a shareable GIF.</p>
+        <div class="hero-actions"><a class="btn primary" href={signedIn ? '/' : '/signup'}>{signedIn ? 'Open your workspace' : 'Start your free trial'} <Icon name="next" size={18} /></a></div>
+        <p class="trial-note">3 months. All features. No credit card needed.</p>
       </div>
       <div class="hero-demo">
-        <div class="demo-heading"><span class="chip accent"><Icon name="parts" size={14} />Compare parts</span><span>Reference → your sketch</span></div>
-        <DemoLoop name="compare-parts" label="part comparison demo" width={1280} height={538} />
-        <p class="demo-note">From the whole portrait to the smallest detail.</p>
+        <DemoLoop name="hero-sketch" label="reference and sketch hero demo" width={1280} height={960} />
+        <p class="demo-note">Your reference. Your drawing. A fresh perspective.</p>
       </div>
+    </section>
+
+    <section class="showcase wrap" aria-labelledby="tools-title">
+      <div class="section-heading"><p class="eyebrow">See the difference. At every stage.</p><h2 id="tools-title">Four tools. A closer look.</h2></div>
+      <div class="feature-grid">
+        {#each features as feature, index}
+          <article id={feature.id} class="feature-card" aria-labelledby={`${feature.id}-title`}>
+            <div class="feature-media" class:progress={feature.id === 'replay'}>
+              <DemoLoop name={feature.name} label={feature.label} caption={feature.caption} width={feature.id === 'replay' ? 458 : 1280} height={feature.height} />
+              {#if feature.id === 'replay'}<span class="gif-label">GIF</span>{/if}
+            </div>
+            <div class="feature-copy">
+              <h3 id={`${feature.id}-title`}><span class="step-number">{index + 1}</span>{feature.title}</h3>
+              <h4>{feature.benefit}</h4>
+              <p>{feature.description}</p>
+              {#if feature.id === 'replay'}<a class="text-link" href="/demos/progress.gif" download="Lilia-Portrait-Study-progress.gif"><Icon name="export" size={15} />Download example GIF</a>{/if}
+            </div>
+          </article>
+        {/each}
+      </div>
+      <div class="accuracy-notes"><p>Alignment corrects a flat page’s photo perspective, not drawing errors. Measurements describe image-space proportions, not perspective-correct physical dimensions.</p><p>The replay is a real five-stage drawing study, made from saved images—not a live recording of strokes.</p></div>
     </section>
 
     <div class="trust wrap">
-      <span><Icon name="image" />Use your own reference & sketch photos</span>
-      <span><Icon name="check" />Image processing stays in your browser</span>
-      <span><Icon name="measure" />Compare shapes. Check proportions.</span>
+      <span><Icon name="image" />Your reference. Your sketch photos.</span>
+      <span><Icon name="check" />Image processing stays in your browser.</span>
+      <span><Icon name="history" />Your progress, worth looking back on.</span>
     </div>
-
-    <section id="align" class="feature wrap" aria-labelledby="align-title">
-      <DemoLoop name="manual-align" label="four-point manual alignment demo" width={1280} height={842} />
-      <div class="feature-copy">
-        <p class="eyebrow">01 / Align</p>
-        <h2 id="align-title">Compare your drawing.<br />Not your camera angle.</h2>
-        <p>A photo taken at an angle can make a faithful sketch look out of proportion. Manual alignment brings the photographed page into the reference’s perspective—a powerful starting point for an accurate visual comparison.</p>
-        <ol class="alignment-steps"><li><strong>1</strong><span>Place at least <b>4 points on the reference</b> and match each to the same location on your sketch photo.</span></li><li><strong>2</strong><span>Spread points across the page, not along one line. Use the 3× magnifier, drag, or arrow keys to refine them.</span></li><li><strong>3</strong><span>Apply alignment to correct the photo’s perspective. Then compare the shapes and proportions that matter.</span></li></ol>
-        <p class="measurement-note">Best on a flat page. Alignment depends on your point placement; it doesn’t correct drawing errors or a curved sheet.</p>
-      </div>
-    </section>
-
-    <section id="compare" class="feature wrap" aria-labelledby="compare-title">
-      <DemoLoop name="compare-parts" label="aligned detail comparison demo" width={1280} height={538} />
-      <div class="feature-copy">
-        <p class="eyebrow">02 / Compare</p>
-        <h2 id="compare-title">Same perspective.<br />A clearer comparison.</h2>
-        <p>Once aligned, look beyond the whole image: compare an eye, a nose, a mouth—or any region you choose. Study corresponding details side by side or blend them in an overlay to see where lines diverge.</p>
-        <ul><li><Icon name="manual" />Manual alignment puts you in control</li><li><Icon name="parts" />Compare matching parts side by side</li><li><Icon name="overlay" />Switch to an overlay to spot differences</li></ul>
-        <a class="text-link" href="/signup">Take a closer look <Icon name="next" size={16} /></a>
-      </div>
-    </section>
-
-    <section id="measure" class="feature measure-feature wrap" aria-labelledby="measure-title">
-      <div class="feature-copy">
-        <p class="eyebrow">03 / Measure</p>
-        <h2 id="measure-title">Less guesswork.<br />More understanding.</h2>
-        <p>Is that feature too wide? Is the spacing too tall? Set a reference scale once, then check horizontal and vertical spans as you move across the image.</p>
-        <ul><li><Icon name="horizontal" />Check feature width and spacing</li><li><Icon name="vertical" />Check feature height and vertical distance</li><li><Icon name="measure" />See proportions and calibrated units live</li></ul>
-        <p class="measurement-note">Image-space proportions, not perspective-correct physical measurements.</p>
-      </div>
-      <DemoLoop name="measure" label="width and height measurement demo" width={1280} height={680} />
-    </section>
-
-    <section class="detail-section wrap" aria-labelledby="detail-title">
-      <div class="section-heading"><p class="eyebrow">Made for the details</p><h2 id="detail-title">Keep your eye on the mark.</h2><p>Small tools that make a big difference when precision matters.</p></div>
-      <div class="detail-grid">
-        <article>
-          <DemoLoop name="line-colors" label="measurement line colors demo" width={1000} height={820} />
-          <div class="detail-copy"><h3>Guides that stand out.</h3><p>Change measurement-line colors to suit dark strokes or light paper. Keep the image readable, and the measurement visible.</p><div class="color-key" aria-label="Available guide colors: white, red, yellow, blue, black"><span style="--swatch: #ffffff"></span><span style="--swatch: #ff0000"></span><span style="--swatch: #ffff00"></span><span style="--swatch: #3050d0"></span><span style="--swatch: #000000"></span><small>Your image. Your contrast.</small></div></div>
-        </article>
-        <article>
-          <DemoLoop name="magnify" label="3× magnifier demo" width={1000} height={820} />
-          <div class="detail-copy"><h3>A closer look. A better-placed point.</h3><p>The 3× magnifier follows your cursor so you can place and refine points without losing sight of the larger image.</p><span class="chip">3× detail · precise point placement</span></div>
-        </article>
-      </div>
-    </section>
 
     <section class="closing wrap" aria-labelledby="closing-title">
       <p class="eyebrow">Your next study starts here</p>
-      <h2 id="closing-title">Align. Compare. Measure.<br />See your work with fresh eyes.</h2>
-      <p>Everything you need for a closer look, free for 3 months.</p>
+      <h2 id="closing-title">Keep drawing. <span>See what comes next.</span></h2>
+      <p>Align, compare, measure, and replay. All features, free for 3 months.</p>
       <a class="btn primary" href={signedIn ? '/' : '/signup'}>{signedIn ? 'Return to your workspace' : 'Create your free account'} <Icon name="next" size={18} /></a>
-      <p class="trial-note">No credit card needed. Already have an account? <a href="/signin">Sign in</a></p>
+      <p class="trial-note">No credit card needed. <a href="/pricing">Explore plans & pricing <span aria-hidden="true">↗</span></a></p>
     </section>
   </main>
 
-  <footer class="wrap"><a class="wordmark" href="/welcome"><Icon name="logo" size={22} /><span>SketchLens</span></a><p>Built for a closer look.</p><a href="/feedback">Give feedback</a><a href="/pricing">Plans & pricing</a><a href={signedIn ? '/' : '/signin'}>{signedIn ? 'Open workspace' : 'Sign in'}</a></footer>
+  <footer class="wrap"><a class="wordmark" href="/welcome"><Icon name="logo" size={24} /><span>SketchLens</span></a><p>Built for a closer look.</p><a href="/feedback">Give feedback</a><a href="/pricing">Plans & pricing</a><a href={signedIn ? '/' : '/signin'}>{signedIn ? 'Open workspace' : 'Sign in'}</a></footer>
 </div>
 
 <style>
   .landing { min-height: 100dvh; }
-  .wrap, .header-inner { margin-inline: auto; max-width: 1200px; width: calc(100% - 96px); }
+  a, .landing :global(button) { scroll-margin-block: 140px 24px; }
+  .wrap, .header-inner { margin-inline: auto; max-width: 1240px; width: calc(100% - 96px); }
   header { background: var(--surface-frost); border-bottom: 1px solid var(--hairline); position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); }
   .header-inner { align-items: center; display: flex; gap: 32px; min-height: 80px; }
-  .wordmark { align-items: center; color: var(--ink); display: inline-flex; font-size: 1rem; font-weight: 600; gap: 10px; text-decoration: none; white-space: nowrap; }
+  .wordmark { align-items: center; color: var(--ink); display: inline-flex; font-size: 1.15rem; font-weight: 600; gap: 10px; letter-spacing: -0.04em; text-decoration: none; white-space: nowrap; }
   .wordmark :global(svg) { color: var(--accent); }
-  nav { display: flex; gap: 28px; margin-left: auto; }
-  nav a, footer > a:not(.wordmark) { color: var(--ink-muted); font-size: 0.85rem; text-decoration: none; }
+  nav { display: flex; gap: 24px; margin-left: auto; }
+  nav a, footer > a:not(.wordmark) { color: var(--ink-muted); font-size: 0.82rem; text-decoration: none; }
   nav a:hover, footer > a:hover { color: var(--accent); }
   .account-actions { display: flex; gap: 8px; }
-  .hero { align-items: center; display: grid; gap: 48px; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); padding-block: 64px 64px; }
-  .eyebrow { color: var(--accent); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em; margin-bottom: 20px; text-transform: uppercase; }
-  h1 { font-size: clamp(2.8rem, 5vw, 4.5rem); letter-spacing: -0.055em; line-height: 1.1; }
-  .hero-brand { align-items: center; color: var(--ink); display: inline-flex; gap: 16px; text-decoration: none; white-space: nowrap; }
-  .hero-brand :global(svg) { color: var(--accent); height: 1.15em; width: 1.15em; }
-  .hero-tagline { color: var(--accent); font-size: clamp(1.1rem, 1.8vw, 1.5rem); font-weight: 600; letter-spacing: -0.025em; margin-top: 12px; }
-  .hero-benefit { font-size: clamp(1.85rem, 2.6vw, 2.3rem); letter-spacing: -0.045em; line-height: 1.16; margin-top: 28px; }
-  .intro { color: var(--ink-muted); font-size: 1.08rem; line-height: 1.7; margin-top: 24px; max-width: 440px; }
-  .hero-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 24px; margin-top: 32px; }
+  .hero { padding-block: 48px 36px; text-align: center; }
+  h1 { font-size: clamp(2.5rem, 4.8vw, 3.7rem); letter-spacing: -0.06em; line-height: 1.1; }
+  .hero-brand { align-items: center; color: var(--ink); display: inline-flex; gap: 14px; text-decoration: none; white-space: nowrap; }
+  .hero-brand :global(svg) { color: var(--accent); height: 1.1em; width: 1.1em; }
+  .hero-tagline { color: var(--accent); font-size: 1.1rem; font-weight: 500; letter-spacing: -0.035em; margin-top: 12px; }
+  .hero-tagline span { color: var(--ink-muted); }
+  h2 { font-size: clamp(1.9rem, 3vw, 2.6rem); letter-spacing: -0.05em; line-height: 1.18; }
+  .hero-benefit { font-size: clamp(2rem, 3.4vw, 3rem); margin-top: 26px; }
+  .intro { color: var(--ink-muted); font-size: 1rem; line-height: 1.8; margin: 16px auto 0; max-width: 710px; }
+  .hero-actions { display: flex; justify-content: center; margin-top: 24px; }
   .hero-actions .btn, .closing .btn { min-height: 48px; padding-inline: 20px; }
-  .watch-link { color: var(--ink); font-size: 0.84rem; text-decoration: none; }
-  .watch-link span { margin-left: 6px; }
-  .trial-note { align-items: center; color: var(--ink-muted); display: flex; flex-wrap: wrap; font-size: 0.76rem; gap: 6px; margin-top: 16px; }
-  .trial-note :global(svg) { color: var(--ok); }
-  .demo-heading { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.72rem; justify-content: space-between; margin-bottom: 14px; }
-  .demo-note { color: var(--ink-muted); font-size: 0.78rem; margin-top: 16px; text-align: center; }
+  .trial-note { align-items: center; color: var(--ink-muted); display: flex; flex-wrap: wrap; font-size: 0.72rem; gap: 12px; justify-content: center; margin-top: 14px; }
+  .hero-demo { margin: 32px auto 0; max-width: 880px; }
+  .hero-demo :global(video) { aspect-ratio: 16 / 9; object-fit: cover; }
+  .demo-note { color: var(--ink-muted); font-size: 0.75rem; line-height: 1.6; margin-top: 14px; }
+  .showcase { padding-block: 24px 32px; }
+  .section-heading { margin-bottom: 28px; text-align: center; }
+  .eyebrow { color: var(--accent); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.13em; margin-bottom: 12px; text-transform: uppercase; }
+  .section-heading h2 { font-size: clamp(1.6rem, 2.3vw, 2rem); }
+  .feature-grid { display: grid; gap: 20px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .feature-card { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); overflow: hidden; scroll-margin-top: 100px; }
+  .feature-media { position: relative; }
+  .feature-media :global(.demo-player) { border: 0; border-bottom: 1px solid var(--hairline); border-radius: 0; box-shadow: none; }
+  .feature-media :global(video) { aspect-ratio: 4 / 3; object-fit: contain; }
+  .progress :global(video) { background: var(--canvas-bg); }
+  .feature-copy { padding: 20px; }
+  h3 { align-items: center; display: flex; font-size: 1.12rem; gap: 10px; letter-spacing: -0.03em; }
+  .step-number { align-items: center; background: var(--accent-tint); border-radius: 50%; color: var(--accent); display: inline-flex; flex: none; font-size: 0.85rem; height: 28px; justify-content: center; width: 28px; }
+  h4 { font-size: 0.83rem; font-weight: 500; letter-spacing: -0.02em; line-height: 1.6; margin-top: 16px; }
+  .feature-copy > p { color: var(--ink-muted); font-size: 0.8rem; line-height: 1.8; margin-top: 8px; }
+  .text-link { align-items: center; color: var(--accent); display: inline-flex; font-size: 0.75rem; font-weight: 500; gap: 6px; line-height: 1.6; margin-top: 16px; text-decoration: none; }
+  .gif-label { background: var(--surface-frost); border: 1px solid var(--border-strong); border-radius: 6px; color: var(--ink); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.06em; padding: 4px 7px; pointer-events: none; position: absolute; right: 10px; top: 10px; }
+  .accuracy-notes { color: var(--ink-muted); display: grid; font-size: 0.7rem; gap: 28px; grid-template-columns: 1fr 1fr; line-height: 1.8; margin-top: 20px; }
   .trust { align-items: center; border-block: 1px solid var(--hairline); display: flex; gap: 24px; justify-content: space-between; padding-block: 24px; }
-  .trust > span { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.78rem; gap: 10px; }
+  .trust > span { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.74rem; gap: 10px; }
   .trust :global(svg) { color: var(--accent); }
-  .feature { align-items: center; display: grid; gap: 80px; grid-template-columns: 1.1fr 0.9fr; padding-block: 96px 48px; scroll-margin-top: 96px; }
-  .measure-feature { grid-template-columns: 0.9fr 1.1fr; padding-block: 64px 96px; }
-  h2 { font-size: clamp(1.9rem, 2.9vw, 2.6rem); letter-spacing: -0.045em; line-height: 1.16; }
-  .feature-copy > p:not(.eyebrow), .section-heading > p:last-child, .detail-copy p { color: var(--ink-muted); font-size: 0.95rem; line-height: 1.75; margin-top: 20px; }
-  ul { display: flex; flex-direction: column; gap: 14px; list-style: none; margin-top: 24px; }
-  li { align-items: center; display: flex; font-size: 0.85rem; gap: 12px; }
-  li :global(svg) { color: var(--accent); }
-  .text-link { align-items: center; color: var(--accent); display: inline-flex; font-size: 0.88rem; font-weight: 500; gap: 10px; margin-top: 28px; text-decoration: none; }
-  .alignment-steps { display: grid; gap: 16px; list-style: none; margin-top: 24px; }
-  .alignment-steps li { align-items: flex-start; line-height: 1.6; }
-  .alignment-steps strong { align-items: center; background: var(--accent-tint); border-radius: 50%; color: var(--accent); display: flex; flex: none; height: 28px; justify-content: center; width: 28px; }
-  .feature-copy > .measurement-note { font-size: 0.72rem !important; }
-  .detail-section { border-top: 1px solid var(--hairline); padding-block: 64px 88px; }
-  .section-heading { margin-bottom: 36px; text-align: center; }
-  .section-heading .eyebrow { margin-bottom: 12px; }
-  .section-heading > p:last-child { margin-top: 12px; }
-  .detail-grid { display: grid; gap: 32px; grid-template-columns: 1fr 1fr; }
-  .detail-copy { padding: 24px 8px 0; }
-  h3 { font-size: 1.3rem; letter-spacing: -0.025em; }
-  .detail-copy p { margin-top: 10px; }
-  .color-key { align-items: center; display: flex; gap: 8px; margin-top: 20px; }
-  .color-key > span { background: var(--swatch); border: 1px solid var(--border-strong); border-radius: 50%; height: 16px; width: 16px; }
-  .color-key small { color: var(--ink-muted); font-size: 0.72rem; margin-left: 6px; }
-  .detail-copy > .chip { margin-top: 20px; }
-  .closing { background: var(--surface); border: 1px solid var(--hairline); border-radius: 20px; padding: 60px 24px; text-align: center; }
-  .closing > p:not(.eyebrow) { color: var(--ink-muted); margin-top: 20px; }
-  .closing .btn { margin-top: 28px; }
-  .closing .trial-note { justify-content: center; }
-  .closing .trial-note a { color: var(--accent); }
-  footer { align-items: center; display: flex; flex-wrap: wrap; gap: 24px; padding-block: 36px; }
-  footer p { color: var(--ink-muted); font-size: 0.78rem; margin-right: auto; }
-  footer .wordmark { font-size: 0.9rem; }
+  .closing { padding-block: 60px 52px; text-align: center; }
+  .closing h2 span { color: var(--accent); }
+  .closing > p:not(.eyebrow) { color: var(--ink-muted); line-height: 1.7; margin-top: 20px; }
+  .closing .btn { margin-top: 24px; }
+  .trial-note a { color: var(--accent); }
+  footer { align-items: center; border-top: 1px solid var(--hairline); display: flex; flex-wrap: wrap; gap: 24px; padding-block: 28px; }
+  footer p { color: var(--ink-muted); font-size: 0.75rem; margin-right: auto; }
+  footer .wordmark { font-size: 1rem; }
   .skip-link { background: var(--surface); color: var(--accent); left: 16px; padding: 12px; position: fixed; top: -80px; z-index: 20; }
   .skip-link:focus { top: 12px; }
   a:not(.btn, .hero-brand):hover { text-decoration: underline; }
-  @media (max-width: 1000px) {
+  @media (max-width: 1100px) {
     .wrap, .header-inner { width: calc(100% - 48px); }
     .header-inner { gap: 20px; }
-    nav { gap: 18px; }
-    .hero { gap: 28px; padding-block: 64px; }
-    h1 { font-size: clamp(2.4rem, 4.8vw, 3rem); }
-    .hero-brand { gap: 10px; }
-    .feature { gap: 40px; }
-    .trust { gap: 16px; }
+    nav { gap: 16px; }
+    .feature-grid { gap: 16px; }
+    .feature-copy { padding: 16px; }
+  }
+  @media (max-width: 1000px) { .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 850px) {
+    .header-inner { flex-wrap: wrap; gap: 8px; padding-block: 14px 10px; }
+    .account-actions { margin-left: auto; }
+    nav { border-top: 1px solid var(--hairline); gap: 24px; justify-content: center; margin-top: 6px; order: 3; padding-top: 10px; width: 100%; }
+    .trust { flex-wrap: wrap; justify-content: center; gap: 16px 28px; }
+    .feature-card { scroll-margin-top: 140px; }
   }
   @media (max-width: 719px) {
     .wrap, .header-inner { width: calc(100% - 40px); }
-    .header-inner { flex-wrap: wrap; gap: 8px; padding-block: 14px 10px; }
-    .wordmark { font-size: 0.9rem; gap: 6px; }
-    .account-actions { gap: 0; margin-left: auto; }
-    .account-actions .btn { font-size: 0.78rem; min-height: 38px; padding-inline: 10px; }
+    .wordmark { font-size: 1rem; gap: 6px; }
+    .account-actions { gap: 0; }
+    .account-actions .btn { font-size: 0.76rem; min-height: 38px; padding-inline: 10px; }
     .account-actions .primary :global(svg) { display: none; }
-    nav { border-top: 1px solid var(--hairline); justify-content: center; margin-top: 8px; order: 3; padding-top: 10px; width: 100%; }
-    .hero { gap: 36px; grid-template-columns: 1fr; padding-block: 48px 40px; }
-    h1 { font-size: clamp(2.3rem, 9vw, 3.5rem); }
-    .hero-tagline { font-size: 1.2rem; }
-    .intro { font-size: 1rem; }
-    .hero-actions { gap: 20px; margin-top: 26px; }
-    .trial-note { font-size: 0.7rem; }
+    nav { gap: 22px; }
+    nav a { font-size: 0.75rem; }
+    .hero { padding-block: 36px 28px; }
+    h1 { font-size: clamp(2.3rem, 9vw, 3.8rem); }
+    .hero-brand { gap: 10px; }
+    .hero-tagline { font-size: 1rem; }
+    .hero-benefit { margin-top: 24px; }
+    .intro { font-size: 0.95rem; }
+    .trial-note { font-size: 0.68rem; }
+    .feature-grid { grid-template-columns: 1fr; }
+    .feature-copy { padding: 24px; }
+    .feature-copy > p { font-size: 0.9rem; }
+    .feature-copy h4 { font-size: 0.95rem; }
+    .feature-media :global(video) { aspect-ratio: 16 / 10; }
+    .accuracy-notes { gap: 14px; grid-template-columns: 1fr; }
     .trust { align-items: flex-start; flex-direction: column; gap: 16px; padding-block: 20px; }
-    .feature, .measure-feature { gap: 28px; grid-template-columns: 1fr; padding-block: 52px 0; scroll-margin-top: 135px; }
-    .feature-copy { grid-row: 1; }
-    .feature-copy .eyebrow { margin-bottom: 14px; }
-    .measure-feature { padding-bottom: 52px; }
-    .detail-section { padding-block: 44px; }
-    .detail-grid { gap: 36px; grid-template-columns: 1fr; }
-    .detail-copy { padding-inline: 0; }
-    .closing { padding-block: 40px; }
+    .closing { padding-block: 44px; }
     footer { column-gap: 20px; row-gap: 16px; }
     footer p { margin: 0; }
   }
   @media (max-width: 359px) {
     .wrap, .header-inner { width: calc(100% - 28px); }
-    .wordmark { font-size: 0.8rem; }
-    .wordmark :global(svg) { width: 20px; }
+    .wordmark { font-size: 0.85rem; }
+    .wordmark :global(svg) { width: 22px; }
     .account-actions .btn { padding-inline: 8px; }
+    nav { gap: 18px; }
+    .hero-tagline { font-size: 0.9rem; }
   }
 </style>

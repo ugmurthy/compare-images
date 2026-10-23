@@ -2,15 +2,22 @@
   import { onMount } from 'svelte';
   import Icon from './Icon.svelte';
 
-  let { name, label, width, height }: { name: string; label: string; width: number; height: number } = $props();
+  let { name, label, width, height, caption = 'Recorded in SketchLens' }: { name: string; label: string; width: number; height: number; caption?: string } = $props();
+  let figure: HTMLElement;
   let video: HTMLVideoElement;
   let playing = $state(false);
   let failed = $state(false);
+  let expanded = $state(false);
+  let canExpand = $state(false);
+  let expandError = $state('');
   let pausedByUser = false;
 
   onMount(() => {
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let visible = false;
+    canExpand = document.fullscreenEnabled;
+
+    function fullscreenChanged() { expanded = document.fullscreenElement === figure; }
 
     function update() {
       if (visible && !motion.matches && !pausedByUser && !document.hidden) {
@@ -24,13 +31,23 @@
     observer.observe(video);
     motion.addEventListener('change', update);
     document.addEventListener('visibilitychange', update);
+    document.addEventListener('fullscreenchange', fullscreenChanged);
     return () => {
       observer.disconnect();
       motion.removeEventListener('change', update);
       document.removeEventListener('visibilitychange', update);
+      document.removeEventListener('fullscreenchange', fullscreenChanged);
       video.pause();
     };
   });
+
+  async function toggleFullscreen() {
+    expandError = '';
+    try {
+      if (document.fullscreenElement === figure) await document.exitFullscreen();
+      else await figure.requestFullscreen();
+    } catch { expandError = 'Could not expand this preview.'; }
+  }
 
   function toggle() {
     if (video.paused) {
@@ -43,23 +60,33 @@
   }
 </script>
 
-<figure class="demo-player">
+<figure bind:this={figure} class="demo-player">
   <video bind:this={video} src={`/demos/${name}.mp4`} poster={`/demos/${name}.jpg`}
     {width} {height} muted loop playsinline preload="none" aria-label={label}
     onplay={() => playing = true} onpause={() => playing = false} onerror={() => failed = true}>
     <track kind="captions" />
   </video>
+  {#if expandError}<p class="expand-error" role="status">{expandError}</p>{/if}
   <figcaption>
-    <span>{failed ? 'Preview unavailable' : 'Recorded in Compare Sketch'}</span>
-    <button class="btn quiet" onclick={toggle} disabled={failed} aria-label={`${playing ? 'Pause' : 'Play'} ${label}`}>
-      <Icon name={playing ? 'stop' : 'play'} size={14} />{playing ? 'Pause' : 'Play'}
-    </button>
+    <span>{failed ? 'Preview unavailable' : caption}</span>
+    <div class="player-actions">
+      <button class="btn quiet" onclick={toggle} disabled={failed} aria-label={`${playing ? 'Pause' : 'Play'} ${label}`}>
+        <Icon name={playing ? 'stop' : 'play'} size={14} />{playing ? 'Pause' : 'Play'}
+      </button>
+      {#if canExpand}<button class="btn quiet expand" onclick={toggleFullscreen} aria-label={`${expanded ? 'Close' : 'Expand'} ${label}`}><Icon name={expanded ? 'close' : 'parts'} size={15} /></button>{/if}
+    </div>
   </figcaption>
 </figure>
 
 <style>
   .demo-player { background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden; }
   video { background: #111318; display: block; height: auto; width: 100%; }
-  figcaption { align-items: center; color: var(--ink-muted); display: flex; font-size: 0.72rem; justify-content: space-between; min-height: 44px; padding: 0 12px 0 16px; }
-  figcaption .btn { font-size: 0.75rem; min-height: 36px; padding: 0 8px; }
+  figcaption { align-items: center; color: var(--ink-muted); display: flex; flex-wrap: wrap; font-size: 0.68rem; gap: 4px; justify-content: space-between; min-height: 44px; padding: 0 8px 0 12px; text-align: left; }
+  .player-actions { align-items: center; display: flex; margin-left: auto; }
+  figcaption .btn { font-size: 0.72rem; min-height: 40px; padding: 0 6px; }
+  figcaption .expand { width: 36px; }
+  .expand-error { color: var(--ink-muted); font-size: 0.72rem; padding: 8px 12px; }
+  .demo-player:fullscreen { border: 0; border-radius: 0; display: flex; flex-direction: column; justify-content: center; padding: 24px; }
+  .demo-player:fullscreen video { aspect-ratio: auto; height: calc(100dvh - 96px); object-fit: contain; }
+  .demo-player:fullscreen figcaption { flex: none; }
 </style>

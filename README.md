@@ -50,24 +50,43 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Public landing page
 
-Signed-out visitors at `/` see an Align/Compare/Measure feature showcase. `/welcome`
+Signed-out visitors at `/` see an Align/Compare/Measure/Replay feature showcase. `/welcome`
 always shows that landing page, including when signed in; all SketchLens brand
 links lead there. `/signup`
 and `/signin` open the existing authentication forms; valid `/?ref=…` links
 still open referred signup directly. Signed-in visitors continue into the app.
 
 The silent H.264 loops and JPEG posters in `public/demos/` are cropped from the
-provided **CleanShot 2026-10-09 at 5.08.15 PM** recording, with account details,
-project names and filenames excluded. Source segments: compare parts 6.25–9.65s,
-measurement 23–31.5s, line colors 24.4–33.4s, magnifier 23.5–27.3s. The manual
-alignment loop comes from **CleanShot 2026-10-19 at 4.23.19 PM**, showing four
-reference points, four corresponding sketch-photo points, and the aligned result.
-It uses the full 15.97s recording with a 2s final-frame hold, cropped with
-`crop=2216:1458:0:260,scale=1280:-2,fps=24` to exclude the account bar. The poster
-is from 6s. Demonstration filenames remain visible in some frames; no account
-details are included. Alignment corrects a flat page's perspective, not drawing
-errors or non-planar distortion.
-Loops use 24 fps, H.264 CRF 25, `yuv420p`, no audio and fast-start metadata.
+four supplied October 23 recordings, each 1950×1608. The hero uses the focused
+24s–end segment of `hero-sketch.mp4`; feature sections use the complete `align.mp4`,
+`compare.mp4`, and `measure.mp4` recordings. Compare shows both whole-image and
+selected-part workflows; Measure shows synchronized guides, zoom, and linked pan.
+The landing follows the centered “big picture” layout: brand and trial CTA above
+a wide hero, followed by four compact feature cards. Each preview can be expanded
+for a closer look without cropping the original recording.
+
+Replay uses the supplied **Lilia-Portrait-Study-progress.gif**, a five-frame,
+458×640, two-second loop. The unchanged original is downloadable as
+`/demos/progress.gif`. Its preview is an H.264 conversion (`fps=25`, CRF 18,
+`yuv420p`, no audio, fast-start metadata), with a JPEG poster from the first frame.
+Using a video preview rather than an always-animating GIF preserves pause,
+offscreen, background-tab, and reduced-motion behavior. It shows saved drawing
+stages, not a live recording of strokes.
+
+To reproduce the media, use these FFmpeg filters before encoding:
+
+| Asset | Source segment | Filter | Poster time in output |
+| --- | --- | --- | --- |
+| `hero-sketch` | 24s–end | `crop=1950:1464:0:144,scale=1280:-2,fps=24` | 8s |
+| `align` | Full | `crop=1950:1448:0:160,scale=1280:-2,fps=24` | 9s |
+| `compare` | Full | `crop=1950:1308:0:300,scale=1280:-2,fps=24` | 15s |
+| `measure` | Full | `scale=1280:-2,fps=24` | 20s |
+
+Encode with `-an -c:v libx264 -crf 25 -preset fast -pix_fmt yuv420p -movflags +faststart`;
+extract JPEG posters with `-ss <time> -frames:v 1 -q:v 3`. Crops remove account
+headers; some demonstration filenames and the recordings’ original zoom framing
+remain. Alignment corrects a flat page's perspective, not drawing errors or
+non-planar distortion. Measurements describe image-space proportions.
 Only visible demos autoplay; they pause offscreen and in background tabs, respect
 reduced motion, and have explicit play/pause controls. The original recording is
 not included in the repository.
